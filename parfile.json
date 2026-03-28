@@ -1,0 +1,123 @@
+{
+    "custom": {
+        "chan_step": 4,
+        "nchans": 15,
+        "vlim": 0.15,
+        "Llim": 0.2,
+        "Ilim": 4,
+        "gaps": [
+            15.1,
+            86.5
+        ],
+        "rings": [
+            67.8,
+            99.7
+        ],
+        "kinks": []
+    },
+    "metadata": {
+        "file_data": "cube.fits",
+        "prepare_script": "prepare_data.py",
+        "log_file": "log_pars_lkca15_13co_0p1_modelthin_I2pwl_sum_fix12co_cube_200walkers_4001steps.txt",
+        "tag": "lkca15_13co_0p1_modelthin_I2pwl_sum_fix12co",
+        "disc": "lkca15",
+        "mol": "13co",
+        "dpc": 157.2,
+        "dv": "0p1",
+        "program": "modelthin",
+        "kind": [
+            "I2pwl",
+            "sum",
+            "fix12co"
+        ],
+        "nwalkers": 200,
+        "nsteps": 4001,
+        "downsamp_pro": 1,
+        "downsamp_fit": 2,
+        "downsamp_factor": 4
+    },
+    "best_fit": {
+        "velocity": {
+            "Mstar": 1.228801,
+            "vsys": 0.0,
+            "vel_sign": -1.0
+        },
+        "orientation": {
+            "incl": 0.880406,
+            "PA": 0.0,
+            "xc": -0.6686261140160704,
+            "yc": 0.2227169217987881
+        },
+        "intensity": {
+            "I0": 0.00140747851154755,
+            "p0": -1.1747032745097699,
+            "p1": -3.0105411171750154,
+            "q": 0.6639240465622006,
+            "Rbreak": 235.26759808543375,
+            "Rout": 537.5710734968476
+        },
+        "linewidth": {
+            "L0": 0.0653212640496181,
+            "p": -0.16150486543137516,
+            "q": -1.1470454932432737
+        },
+        "lineslope": {
+            "Ls": 1.903900108717946,
+            "p": 0.2696451476717259
+        },
+        "height_upper": {
+            "z0": 27.33334,
+            "p": 0.867247,
+            "Rb": 510.969486,
+            "q": 3.455002
+        },
+        "height_lower": {
+            "z0": 27.33334,
+            "p": 0.867247,
+            "Rb": 510.969486,
+            "q": 3.455002
+        }
+    },
+    "units": {
+        "velocity": {
+            "Mstar": "Msun",
+            "vsys": "km/s",
+            "vel_sign": "none"
+        },
+        "orientation": {
+            "incl": "rad",
+            "PA": "rad",
+            "xc": "au",
+            "yc": "au"
+        },
+        "intensity": {
+            "I0": "Jy/pix",
+            "p0": "none",
+            "p1": "none",
+            "q": "none",
+            "Rbreak": "au",
+            "Rout": "au"
+        },
+        "linewidth": {
+            "L0": "km/s",
+            "p": "none",
+            "q": "none"
+        },
+        "lineslope": {
+            "Ls": "none",
+            "p": "none"
+        },
+        "height_upper": {
+            "z0": "au",
+            "p": "none",
+            "Rb": "au",
+            "q": "none"
+        },
+        "height_lower": {
+            "z0": "au",
+            "p": "none",
+            "Rb": "au",
+            "q": "none"
+        }
+    }
+}
