@@ -58,7 +58,7 @@ def Q(T):
 
 Q(10*u.K)
 
-T=np.linspace(2.725, 2000, num=10000) 
+T=np.linspace(2.725, 5000, num=20000) 
 
 print(T[15])
 Z=np.zeros(len(T))
@@ -82,7 +82,7 @@ plt.savefig('Q(T).png')
 plt.close()
 
 np.savetxt(
-    "partitionfunction_ch3oh.inp",
+    "../inputs/partitionfunction_ch3oh.inp",
     np.column_stack((T, Z)),
     fmt="%.6e",          # notación científica
     header=f"1\n{len(T)}",

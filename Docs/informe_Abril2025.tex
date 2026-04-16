@@ -1,0 +1,129 @@
+\documentclass{beamer}
+
+\usepackage{fvextra}
+\newcommand{\aj}{The Astronomical Journal}
+\newcommand{\apj}{ApJ}
+\newcommand{\apjl}{ApJL}
+\newcommand{\apjs}{ApJS}
+\newcommand{\aap}{A\&A}
+\newcommand{\mnras}{MNRAS}
+\newcommand{\nar}{NAR}
+\newcommand{\araa}{Annu. Rev. Astron. Astrophys.}
+% Tema base
+\usetheme{Madrid}
+
+% Definición de colores (verde oscuro formal)
+\definecolor{verdeoscuro}{RGB}{0,70,50}
+\definecolor{verdeclaro}{RGB}{120,180,150}
+
+% Aplicar colores al tema
+\setbeamercolor{structure}{fg=verdeoscuro}
+\setbeamercolor{palette primary}{bg=verdeoscuro, fg=white}
+\setbeamercolor{palette secondary}{bg=verdeoscuro!85, fg=white}
+\setbeamercolor{palette tertiary}{bg=verdeoscuro!70, fg=white}
+\setbeamercolor{palette quaternary}{bg=verdeoscuro!50, fg=white}
+
+\setbeamercolor{title}{fg=white}
+\setbeamercolor{frametitle}{bg=verdeoscuro, fg=white}
+
+\setbeamercolor{block title}{bg=verdeoscuro, fg=white}
+\setbeamercolor{block body}{bg=verdeclaro!20, fg=black}
+
+% Quitar símbolos de navegación
+\setbeamertemplate{navigation symbols}{}
+
+% Datos de la presentación
+\title{Informe de proyecto de maestría}
+\author{Tubal Caín Navarro Ruiz}
+\institute{IRyA - UNAM}
+\date{Abril 2025}
+
+\begin{document}
+
+% Portada
+\begin{frame}
+    \titlepage
+\end{frame}
+
+% Índice
+
+\begin{frame}{Contenido}
+    \tableofcontents
+\end{frame}
+
+% Sección 1
+
+% Sección 2
+\section{Scripts adaptados}
+
+\begin{frame}{yso\_models.py}
+    \begin{block}{Script de modelos}
+        Crea modelos a partir de sf3dmodels
+    \end{block}
+
+    \begin{itemize}
+        \item Escrito orientado a funciones. 
+        \item Actualmente con 3 modelos: Ulrich+Disc, Hamburguer y Hamburguer Piecewise
+        \item Ulrich probado con parámetros razonables 
+    \end{itemize}
+    
+\end{frame}
+
+\begin{frame}{make\_line.py}
+    \begin{block}{Script de imagenes}
+        Usa radmc3d para transferencia radiativa y manipula para crear fits convolucionados
+    \end{block}
+    \begin{itemize}
+        \item Funciona con parser$^*$
+        \item Usa datos observacionales para adaptar el modelo. (Distancias, tamaños, linea observada, beam, etc.)
+        \item Corre radmc3d para generar el cubo de linea
+        \item Corre Spectralcube para convolucionar; actualiza headers
+        \item El output son imágenes crudas, convolucionadas en Jy/px y Jy/beam
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{main.py}
+    \begin{block}{Script maestro}
+        Ejecuta todos los pasos de los modelos
+    \end{block}
+    \begin{itemize}
+        \item Crea una carpeta por modelo
+        \item Llama a yso\_models y make\_line dentro de su respectiva carpeta
+        \item Posiblemente a futuro ejecute mcmc o mande llamar a un script que lo ejecute
+    \end{itemize}
+\end{frame}
+
+
+\section{Trabajo futuro}
+
+\begin{frame}{Trabajo próximo}
+\begin{itemize}
+    \item Introducir y probar parámetros razonables en modelos Hamburguer y Hamburguer\_Piecewise
+    \item Introducir ruido en la imagen final (make\_line), con formato adecuado para comparar con datos observacionales
+    \item ¿Manipular datos observacionales?
+    \item Crear script que ejecute mcmc
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Problemas específicos}
+\begin{itemize}
+    \item En los parámetros probados la abundancia es aun relativamente alta ($7\times 10^{-7}$)
+    \item A abundancias menores requiere $\dot{M} $ mayor; pero con el grid actual genera concentraciones con $T>2000$ (pocos puntos). ¿Puede extrapolarse la Fn. de partición para no generar error al correr los modelos aunque no sea preciso? ¿Indica problemas en la resolución del modelo o de la RT?
+    \item En los ejemplos de mcmc (rlg10) se usan custom keywords dentro del archivo radmc.inp. 
+\end{itemize}
+\end{frame}
+
+\section{Bibliografía}
+\begin{frame}[allowframebreaks]{Lecturas y consultas}
+    \nocite{*}
+    \bibliographystyle{apalike} % o plain, unsrt, etc.
+    \bibliography{lecturas}
+\end{frame}
+
+% Frame final
+\begin{frame}
+    \centering
+    \Huge Gracias
+\end{frame}
+
+\end{document}

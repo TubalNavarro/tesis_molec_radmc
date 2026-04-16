@@ -52,7 +52,7 @@ def write_molecule_files(nx,ny,nz, density, prop, molec=''):
         f.write('----------------------------------------------------------------------------\n')
     
 
-def UlrichDisk(discFlag=True, cavity_ang=40 ,envFlag=True, nmodel=0, MStar=15, MRate=4e-4, Rdisc=550, Arho0=5, Renv=1000, exp_disc=2.25, prop_only=False, molec='co', molec_abund=7e-7):
+def UlrichDisk(discFlag=True, cavity_ang=60 ,envFlag=True, nmodel=0, MStar=20, MRate=6e-4, Rdisc=800, Arho0=5, Renv=8000, exp_disc=2.25, prop_only=False, molec='co', molec_abund=5e-8):
 
     t0 = time.time()
 
@@ -72,11 +72,11 @@ def UlrichDisk(discFlag=True, cavity_ang=40 ,envFlag=True, nmodel=0, MStar=15, M
     #Parameters for the Pringle disc
     #-------------------------------
     MRate = MRate * u.MSun_yr
-    RStar = 4*u.RSun * ( MStar/u.MSun )**0.8  #????
+    RStar = u.RSun * ( MStar/u.MSun )**0.8  #????
 
     #RStar = 26 * u.RSun * ( MStar/u.MSun )**0.27 * ( MRate / (1e-3*u.MSun_yr) )**0.41
 
-    LStar=  5e4*u.Lsun
+    LStar=  10*u.Lsun
 
     print('RStar:'.format(RStar))
     TStar = u.TSun * ( (LStar/u.LSun) / (RStar/u.RSun)**2 )**0.25
@@ -90,7 +90,7 @@ def UlrichDisk(discFlag=True, cavity_ang=40 ,envFlag=True, nmodel=0, MStar=15, M
     #Cubic grid, each edge ranges [-size, size] au.
 
     sizex = sizey = sizez = 2000 * u.au #half size
-    Nx = Ny = Nz = 80 #Number of divisions for each axis
+    Nx = Ny = Nz = 160 #Number of divisions for each axis
     GRID = Model.grid([sizex, sizey, sizez], [Nx, Ny, Nz], rt_code = 'radmc3d', include_zero = True)
     NPoints = GRID.NPoints #Final number of nodes in the grid
   
@@ -103,7 +103,7 @@ def UlrichDisk(discFlag=True, cavity_ang=40 ,envFlag=True, nmodel=0, MStar=15, M
     Renv = Renv * u.au #Envelope radius
     Cavity = cavity_ang * np.pi/180 #Cavity opening angle 
     density = Model.density_Env_Disc(RStar, Rd, Rho0, Arho, GRID, exp_disc=exp_disc, 
-                                     discFlag = discFlag, envFlag = envFlag, rho_min_env=1.0e9,
+                                     discFlag = discFlag, envFlag = envFlag, rho_min_env=1.0e7,
                                      renv_max = Renv, ang_cavity = Cavity, 
                                      average_around_Rd=np.median)
 
@@ -111,11 +111,10 @@ def UlrichDisk(discFlag=True, cavity_ang=40 ,envFlag=True, nmodel=0, MStar=15, M
     #---------------------
     # MODEL TEMPERATURE
     #---------------------
-    T10Env=700
-    BT = 8
+    T10Env=400
+    BT = 10
     temperature = Model.temperature(TStar, Rd,T10Env, RStar, MStar, MRate, BT, density, GRID)
-    #temperature=Model.temperature_Constant(density, GRID, discTemp = 246, envTemp = 264, backTemp = 30.0)
-    
+    #Whitney et al. exponent is p=0.33 (in Keto & Zhang (2/(4+p)) where p<-1  )
    
     #--------
     #VELOCITY
@@ -140,7 +139,7 @@ def UlrichDisk(discFlag=True, cavity_ang=40 ,envFlag=True, nmodel=0, MStar=15, M
 #2D PLOTTING (Density)
 #---------------------
 
-    vmin, vmax = np.array([2e13, 1e19]) / 1e6
+    vmin, vmax = np.array([2e10, 5e19]) / 1e6
     norm = colors.LogNorm(vmin=vmin, vmax=vmax)
 
     Plot_model.plane2D(GRID, dens_plot, axisunit = u.au,
@@ -148,7 +147,7 @@ def UlrichDisk(discFlag=True, cavity_ang=40 ,envFlag=True, nmodel=0, MStar=15, M
                        norm = norm, colorlabel = r'$[\rm cm^{-3}]$',
                        output = 'DensMidplane_%s.png'%tag, show = False)
 
-    vmin, vmax = np.array([1e13, 3e17]) / 1e6
+    vmin, vmax = np.array([2e10, 5e19]) / 1e6
     norm = colors.LogNorm(vmin=vmin, vmax=vmax)
 
     Plot_model.plane2D(GRID, dens_plot, axisunit = u.au,
@@ -160,20 +159,20 @@ def UlrichDisk(discFlag=True, cavity_ang=40 ,envFlag=True, nmodel=0, MStar=15, M
     #2D PLOTTING (Temp)
     #---------------------
 
-    vmin, vmax = np.array([5e1, 3e3])
+    vmin, vmax = np.array([5e1, 1e4])
     norm = colors.LogNorm(vmin=vmin, vmax=vmax)
 
     Plot_model.plane2D(GRID, temperature.total, axisunit = u.au,
-                       cmap = 'ocean_r', plane = {'z': 0*u.au},
+                       cmap = 'jet', plane = {'z': 0*u.au},
                        norm = norm, colorlabel = r'[Kelvin]',
                        output = 'TempMidplane_%s.png'%tag, show = False)
 
 
-    vmin, vmax = np.array([5e1, 2e3])
+    vmin, vmax = np.array([5e1, 1e4])
     norm = colors.LogNorm(vmin=vmin, vmax=vmax)
 
     Plot_model.plane2D(GRID, temperature.total, axisunit = u.au,
-                       cmap = 'ocean_r', plane = {'y': 0*u.au},
+                       cmap = 'jet', plane = {'y': 0*u.au},
                        norm = norm, colorlabel = r'[Kelvin]',
                        output = 'TempVertical_%s.png'%tag, show = False)
     
@@ -193,7 +192,7 @@ def UlrichDisk(discFlag=True, cavity_ang=40 ,envFlag=True, nmodel=0, MStar=15, M
     #**********************
     abundance = molec_abund+np.zeros(GRID.NPoints) #Optimize for the molecule
     gtdratio = Model.gastodust(100., GRID.NPoints)
-    microturb = 100.+np.zeros(GRID.NPoints)
+    microturb = 100+np.zeros(GRID.NPoints)
     prop = {'dens_H2': density.total,
         'dens_dust': 2*ct.mH * density.total * 1/gtdratio, #mass density # ct.mH -> u.amu
         'temp_dust': temperature.total, #30+np.zeros_like(density.total),
@@ -208,7 +207,7 @@ def UlrichDisk(discFlag=True, cavity_ang=40 ,envFlag=True, nmodel=0, MStar=15, M
     radmc = rt.Radmc3d(GRID)
     wavelength_intervals = [1e-1,5e2,1e4] #[5e-3, 5e1, 1e4]
     wavelength_divisions = [20,20] 
-    radmc.write_radmc3d_control(nphot=100000000, incl_dust=1, setthreads=8, incl_freefree=0, tgas_eq_tdust=1, modified_random_walk=1)
+    radmc.write_radmc3d_control(nphot=100000000, incl_dust=1, setthreads=8, incl_freefree=0, tgas_eq_tdust=1, modified_random_walk=1, catch_doppler_resolution=0.2)
     radmc.write_amr_grid()
     radmc.write_dust_density(prop['dens_dust']) #Mass density
     radmc.write_dust_temperature(prop['temp_dust']) #Spherical radial plaw temperature produces artifacts near the disc outer radius in the line images

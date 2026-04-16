@@ -42,7 +42,7 @@ def make_line_image_freq(trans=1):
                         help="Delta velocity channel, line images will range from -dv*nchan/2 to dv*nchan/2 centered in restfreq. DEFAULTS to 5.0 km/s.") #Jaquez
     parser.add_argument('-sizeau', '--sizeau', default=4000, type=float,
                         help="Maximum sky window extent in au. DEFAULTS to 1200 au.")
-    parser.add_argument('-nx', '--nx', default=80, type=int, 
+    parser.add_argument('-nx', '--nx', default=160, type=int, 
                         help="Number of pixels per spatial dimension. DEFAULTS to 264")
     parser.add_argument('-incl', '--incl', default=60, type=float,
                         help="Disc inclination. DEFAULTS to 50.32 deg.")
@@ -161,4 +161,5 @@ def make_line_image_freq(trans=1):
     hdu_conv = fits.PrimaryHDU(data=data_,header=new_header)
     hdul_conv = fits.HDUList([hdu_conv])
     hdul_conv.writeto(workdir+'spectral_cube_convolved_Jypbeam_header_update.fits', overwrite=True)
+
     
