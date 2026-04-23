@@ -23,7 +23,7 @@ import sys
 from argparse import ArgumentParser
 
 # make a line observations and output in frequency units as a real observation.
-def make_line_image_freq(trans=1):
+def make_line_image_freq():
     parser = ArgumentParser(prog='Make line images from sf3d model', description='Make line images and readable fits cube')
     
     ### RADMC simulation options 
@@ -33,16 +33,16 @@ def make_line_image_freq(trans=1):
     parser.add_argument('-restfreq', '--restfreq', default=233.772270248e9, type=float,  
                         help="Rest frequency of the cube. DEFAULTS to  223.72571493e9 Hz") # jaquez
     parser.add_argument('-linefreq', '--linefreq', default=233.795666e9, type=float,  
-                        help="Rest frequency of the cube. DEFAULTS to  223.795666 Hz") # jaquez
+                        help="Line frequency of the cube. DEFAULTS to  223.795666 Hz") # jaquez
     parser.add_argument('-v_sys', '--v_sys', default=-50.51, type=float,
                         help='Systemic velocity of the source in km/s. DEFAULTS TO 0.'  )
-    parser.add_argument('-nchan', '--nchan', default=31, type=int,
+    parser.add_argument('-nchan', '--nchan', default=58, type=int,
                         help="Number of velocity channels to be computed. DEFAULTS to 101.")
-    parser.add_argument('-dv', '--dv', default=0.574826553576917, type=float,   #jaquez
+    parser.add_argument('-dv', '--dv', default=0.6261185044031, type=float,   #jaquez
                         help="Delta velocity channel, line images will range from -dv*nchan/2 to dv*nchan/2 centered in restfreq. DEFAULTS to 5.0 km/s.") #Jaquez
-    parser.add_argument('-sizeau', '--sizeau', default=4000, type=float,
+    parser.add_argument('-sizeau', '--sizeau', default=3168, type=float,
                         help="Maximum sky window extent in au. DEFAULTS to 1200 au.")
-    parser.add_argument('-nx', '--nx', default=160, type=int, 
+    parser.add_argument('-nx', '--nx', default=99, type=int, 
                         help="Number of pixels per spatial dimension. DEFAULTS to 264")
     parser.add_argument('-incl', '--incl', default=60, type=float,
                         help="Disc inclination. DEFAULTS to 50.32 deg.")
@@ -63,16 +63,15 @@ def make_line_image_freq(trans=1):
     parser.add_argument("--add_noise", action="store_true", help="add gaussian noise to the cube") #jaquez
     parser.add_argument("--noise_std", default=1e-3, type=float, help="noise standard deviation") #jaquez
 
-    # extra cube data: in construction
     # add a wcs 
-    #Jaquez: add coord (cordinates) args to put the object in the sky. Usefull to compare match the models with the observations
-    #parser.add_argument('-coord','--coord', default='03h10m05s -10d05m30s', type=str, #this will be an input in radmc cube image writing 
-                        #help='Coordinates of the object in the sky. Usefull to open with casa' ) # Jaquez 
+
+    parser.add_argument('-coord','--coord', default='16h29m46.12974s -48d15m49.9512s', type=str, 
+                        help='Coordinates of the object in the sky.' ) 
     parser.add_argument('-fi', '--fileimage', default='image_line.out', type=str,
                         help="Output image file name. DEFAULTS to 'image_line.out'.")
     parser.add_argument('-fc', '--filecube', default='cube.fits', type=str,
                         help="Output fits file. DEFAULTS to 'cube.fits'.")
-
+    parser.add_argument('-transition', '--transition', default=1, type=int, help="Number of line transition in molecule.inp file"  )
     args = parser.parse_args()
 
     #************************
@@ -98,11 +97,11 @@ def make_line_image_freq(trans=1):
     #RUN RADMC3D
     #**************
     if args.radmc3d: 
-        subprocess.run('%s image iline  %d widthkms %.5f linenlam %d npix %d sizeau %.1f incl %.1f'%(radmc3d, trans ,dv_half, args.nchan, args.nx, args.sizeau, args.incl), shell=True) #sizeau=2*xmax
-        shutil.move('image.out', workdir+args.fileimage) #poner distania a la fuente
+        subprocess.run('%s image iline  %d widthkms %.5f linenlam %d npix %d sizeau %.1f incl %.1f'%(radmc3d, args.transition ,dv_half, args.nchan, args.nx, args.sizeau, args.incl), shell=True) 
+        shutil.move('image.out', workdir+args.fileimage) 
 
     im = image.readImage(workdir+fileimage) #shape: (nrows, ncols, nchan)
-    im.writeFits(fname=workdir+"radmc_output"+fileimage.replace(".out",".fits"),dpc=3200, coord='16h29m46.12974s -48d15m49.9512s',) # escribe un archivo en jy/pix,  lo escribe con el shape correcto. Ya comprobe esto!!!!
+    im.writeFits(fname=workdir+"radmc_output"+fileimage.replace(".out",".fits"),dpc=args.dpc, coord=args.coord,) 
     
     # a partir del header de salida de radmc vamos a generar el header 
     hdul = fits.open(workdir+"radmc_output"+fileimage.replace(".out",".fits")) 
@@ -116,7 +115,7 @@ def make_line_image_freq(trans=1):
     hd_mod['CTYPE3'] = 'FREQ'
     hd_mod['SPECSYS'] = 'LSRK    '
     hd_mod['VELREF']  = 257 
-    hd_mod['RESTFRQ'] = 233.772270248e9
+    hd_mod['RESTFRQ'] = args.restfreq
     hd_mod['BUNIT'] = 'Jy/pixel'
     hd_mod['CUNIT3'] = 'Hz'
     hd_mod['CRVAL3'] = nu_min.value
@@ -133,33 +132,62 @@ def make_line_image_freq(trans=1):
     syn_cube = SpectralCube.read(workdir+'raw_radmc_header_updated.fits') #Jy/pix
     hdr_syn = syn_cube.header
 
-    # define a beam of the size of the pixel
-    point_beam = Beam(0.0 * u.deg) 
-    cube_ = syn_cube.with_beam(point_beam) # queda en unidades de Jy.pix-1
+    #subtract continuum
+    print('\n')
+    print('Starting continuum_subtraction ')
 
-    new_beam = Beam(
-        major= args.bmaj * u.arcsec,
-        minor=args.bmin * u.arcsec,
-        pa=args.bpa * u.deg
-    )
+    csub_image = 'raw_radmc_csub.fits'
+    cont_image = 'raw_radmc_cont.fits'
+    hdul = fits.open(workdir+'raw_radmc_header_updated.fits')
+    data = hdul[0].data
+    data2 = data.copy()
+    datac = data.copy()	
 
-    conv_synth_cube = cube_.convolve_to(new_beam)
-    # save this new cube
-    conv_synth_cube.write(workdir+'spectral_cube_convolved_Jyppix.fits', overwrite=True)
-    ### aqui tengo problemas para obtener un cubo con un header que casa lea correctamente
-    conv_synth_cube.to(u.Jy/u.beam).write(workdir+'spectral_cube_convolved_Jypbeam.fits', overwrite=True)
-
-    hdul_ = fits.open(workdir+'spectral_cube_convolved_Jypbeam.fits')
-    data_ = hdul_['PRIMARY'].data
-    header_ = hdul_['PRIMARY'].header
-    new_header = conv_synth_cube.header.copy()
-    # quito el key BEAM?
-    del new_header['BEAM']
-    new_header['BUNIT'] = 'JY/BEAM'
+    for x in range(data.shape[2]):
+        for y in range(data.shape[1]):
+            data2[:,y,x] = data[:,y,x] - data[:,y,x].min()
+            datac[:,y,x] = data[:,y,x].min()
     
-    #Final cube Jy/beam
-    hdu_conv = fits.PrimaryHDU(data=data_,header=new_header)
-    hdul_conv = fits.HDUList([hdu_conv])
-    hdul_conv.writeto(workdir+'spectral_cube_convolved_Jypbeam_header_update.fits', overwrite=True)
+    fits.writeto(csub_image,data2,hdul[0].header,overwrite=True)
+    fits.writeto(cont_image,datac,hdul[0].header,overwrite=True)	#QZ
 
+
+    def convolve(cube_name):
+    # define a beam of the size of the pixel
+        clean_name = cube_name.replace("raw_radmc_", "").replace("header_updated", "")
+
+        syn_cube = SpectralCube.read(workdir+cube_name+'.fits') #Jy/pix
+        point_beam = Beam(0.0 * u.deg) 
+        cube_ = syn_cube.with_beam(point_beam) # queda en unidades de Jy.pix-1
+    
+        new_beam = Beam(
+            major= args.bmaj * u.arcsec,
+            minor=args.bmin * u.arcsec,
+            pa=args.bpa * u.deg
+        )
+    
+        conv_synth_cube = cube_.convolve_to(new_beam)
+        # save this new cube
+        conv_synth_cube.write(workdir+clean_name+'_convolved_Jyppix.fits', overwrite=True)
+        ### aqui tengo problemas para obtener un cubo con un header que casa lea correctamente
+
+
+        conv_synth_cube.to(u.Jy/u.beam).write(workdir+cube_name+'_convolved_Jypbeam.fits', overwrite=True)
+    
+        hdul_ = fits.open(workdir+cube_name+'_convolved_Jypbeam.fits')
+        data_ = hdul_['PRIMARY'].data
+        header_ = hdul_['PRIMARY'].header
+        new_header = conv_synth_cube.header.copy()
+        # quito el key BEAM?
+        del new_header['BEAM']
+        new_header['BUNIT'] = 'JY/BEAM'
+        
+        #Final cube Jy/beam
+        hdu_conv = fits.PrimaryHDU(data=data_,header=new_header)
+        hdul_conv = fits.HDUList([hdu_conv])
+        hdul_conv.writeto(workdir+clean_name+'_convolved_Jypbeam_header_update.fits', overwrite=True)
+
+    convolve('raw_radmc_header_updated')
+    convolve('raw_radmc_csub')
+    convolve('raw_radmc_cont')
     

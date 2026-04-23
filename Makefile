@@ -18,3 +18,6 @@ cleanall:
 cleanline:
 	@rm -f	*.out *.fits
 	@echo .out and .fits files removed.
+
+clean_subproducts:
+	find model_* -type f ! -name "*.fits" -delete

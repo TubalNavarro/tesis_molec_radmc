@@ -52,7 +52,7 @@ def write_molecule_files(nx,ny,nz, density, prop, molec=''):
         f.write('----------------------------------------------------------------------------\n')
     
 
-def UlrichDisk(discFlag=True, cavity_ang=60 ,envFlag=True, nmodel=0, MStar=20, MRate=6e-4, Rdisc=800, Arho0=5, Renv=8000, exp_disc=2.25, prop_only=False, molec='co', molec_abund=5e-8):
+def UlrichDisk(discFlag=True, cavity_ang=60 ,envFlag=True, nmodel=0, MStar=20, MRate=1e-3, Rdisc=700, Arho0=10, Renv=8000, exp_disc=2.25, prop_only=False, molec='co', molec_abund=5e-8, const_T=300):
 
     t0 = time.time()
 
@@ -72,11 +72,11 @@ def UlrichDisk(discFlag=True, cavity_ang=60 ,envFlag=True, nmodel=0, MStar=20, M
     #Parameters for the Pringle disc
     #-------------------------------
     MRate = MRate * u.MSun_yr
-    RStar = u.RSun * ( MStar/u.MSun )**0.8  #????
+    RStar = 10*u.RSun * ( MStar/u.MSun )**0.8  #????
 
     #RStar = 26 * u.RSun * ( MStar/u.MSun )**0.27 * ( MRate / (1e-3*u.MSun_yr) )**0.41
 
-    LStar=  10*u.Lsun
+    LStar=  1e4*u.Lsun
 
     print('RStar:'.format(RStar))
     TStar = u.TSun * ( (LStar/u.LSun) / (RStar/u.RSun)**2 )**0.25
@@ -89,8 +89,8 @@ def UlrichDisk(discFlag=True, cavity_ang=60 ,envFlag=True, nmodel=0, MStar=20, M
     #---------------
     #Cubic grid, each edge ranges [-size, size] au.
 
-    sizex = sizey = sizez = 2000 * u.au #half size
-    Nx = Ny = Nz = 160 #Number of divisions for each axis
+    sizex = sizey = sizez = 1584 * u.au #half size
+    Nx = Ny = Nz = 99 #Number of divisions for each axis
     GRID = Model.grid([sizex, sizey, sizez], [Nx, Ny, Nz], rt_code = 'radmc3d', include_zero = True)
     NPoints = GRID.NPoints #Final number of nodes in the grid
   
@@ -111,9 +111,11 @@ def UlrichDisk(discFlag=True, cavity_ang=60 ,envFlag=True, nmodel=0, MStar=20, M
     #---------------------
     # MODEL TEMPERATURE
     #---------------------
-    T10Env=400
+    T10Env=1200
     BT = 10
     temperature = Model.temperature(TStar, Rd,T10Env, RStar, MStar, MRate, BT, density, GRID)
+    #temperature=Model.temperature_Constant(density, GRID, discTemp = 2.5*const_T, envTemp = const_T, backTemp = 30.0)
+    
     #Whitney et al. exponent is p=0.33 (in Keto & Zhang (2/(4+p)) where p<-1  )
    
     #--------
@@ -121,72 +123,72 @@ def UlrichDisk(discFlag=True, cavity_ang=60 ,envFlag=True, nmodel=0, MStar=20, M
     #--------
     vel = Model.velocity(RStar, MStar, Rd, density, GRID)
     
-    #-----------------------------------------------
-    #3D Points Distribution (weighting with density)
-    #-----------------------------------------------
-    tag = 'Main'
-    dens_plot = density.total / 1e6
-
-    weight = 10*Rho0
-    r = GRID.rRTP[0] / u.au #GRID.rRTP hosts [r, R, Theta, Phi] --> Polar GRID
-    Plot_model.scatter3D(GRID, density.total, weight,
-                     NRand = 4000, colordim = r, axisunit = u.au,
-                     cmap = 'jet', colorscale = 'log',
-                     colorlabel = r'${\rm log}_{10}(r [au])$',
-                     output = '3Dpoints%s.png'%tag, show = False)
-
+#    #-----------------------------------------------
+#    #3D Points Distribution (weighting with density)
+#    #-----------------------------------------------
+#    tag = 'Main'
+#    dens_plot = density.total / 1e6
+#
+#    weight = 10*Rho0
+#    r = GRID.rRTP[0] / u.au #GRID.rRTP hosts [r, R, Theta, Phi] --> Polar GRID
+#    Plot_model.scatter3D(GRID, density.total, weight,
+#                     NRand = 4000, colordim = r, axisunit = u.au,
+#                     cmap = 'jet', colorscale = 'log',
+#                     colorlabel = r'${\rm log}_{10}(r [au])$',
+#                     output = '3Dpoints%s.png'%tag, show = False)
+#
 #---------------------
 #2D PLOTTING (Density)
-#---------------------
-
-    vmin, vmax = np.array([2e10, 5e19]) / 1e6
-    norm = colors.LogNorm(vmin=vmin, vmax=vmax)
-
-    Plot_model.plane2D(GRID, dens_plot, axisunit = u.au,
-                       cmap = 'jet', plane = {'z': 0*u.au},
-                       norm = norm, colorlabel = r'$[\rm cm^{-3}]$',
-                       output = 'DensMidplane_%s.png'%tag, show = False)
-
-    vmin, vmax = np.array([2e10, 5e19]) / 1e6
-    norm = colors.LogNorm(vmin=vmin, vmax=vmax)
-
-    Plot_model.plane2D(GRID, dens_plot, axisunit = u.au,
-                       cmap = 'jet', plane = {'y': 0*u.au},
-                       norm = norm, colorlabel = r'$[\rm cm^{-3}]$',
-                       output = 'DensVertical_%s.png'%tag, show = False)
-
-    #---------------------
-    #2D PLOTTING (Temp)
-    #---------------------
-
-    vmin, vmax = np.array([5e1, 1e4])
-    norm = colors.LogNorm(vmin=vmin, vmax=vmax)
-
-    Plot_model.plane2D(GRID, temperature.total, axisunit = u.au,
-                       cmap = 'jet', plane = {'z': 0*u.au},
-                       norm = norm, colorlabel = r'[Kelvin]',
-                       output = 'TempMidplane_%s.png'%tag, show = False)
-
-
-    vmin, vmax = np.array([5e1, 1e4])
-    norm = colors.LogNorm(vmin=vmin, vmax=vmax)
-
-    Plot_model.plane2D(GRID, temperature.total, axisunit = u.au,
-                       cmap = 'jet', plane = {'y': 0*u.au},
-                       norm = norm, colorlabel = r'[Kelvin]',
-                       output = 'TempVertical_%s.png'%tag, show = False)
-    
-    #---------------------
-    #2D PLOTTING (Emissivity)
-    #---------------------
-    vmin, vmax = np.array([3e7, 5e12])
-    norm = colors.LogNorm(vmin=vmin, vmax=vmax)
-
-    Plot_model.plane2D(GRID, temperature.total * dens_plot, axisunit = u.au,
-                       cmap = 'ocean_r', plane = {'y': 0*u.au},
-                       norm = norm, colorlabel = r'[$\rho$ T]',
-                       output = 'Emissivity_%s.png'%tag, show = False)
-
+##---------------------
+#
+#    vmin, vmax = np.array([2e10, 5e19]) / 1e6
+#    norm = colors.LogNorm(vmin=vmin, vmax=vmax)
+#
+#    Plot_model.plane2D(GRID, dens_plot, axisunit = u.au,
+#                       cmap = 'jet', plane = {'z': 0*u.au},
+#                       norm = norm, colorlabel = r'$[\rm cm^{-3}]$',
+#                       output = 'DensMidplane_%s.png'%tag, show = False)
+#
+#    vmin, vmax = np.array([2e10, 5e19]) / 1e6
+#    norm = colors.LogNorm(vmin=vmin, vmax=vmax)
+#
+#    Plot_model.plane2D(GRID, dens_plot, axisunit = u.au,
+#                       cmap = 'jet', plane = {'y': 0*u.au},
+#                       norm = norm, colorlabel = r'$[\rm cm^{-3}]$',
+#                       output = 'DensVertical_%s.png'%tag, show = False)
+#
+#    #---------------------
+#    #2D PLOTTING (Temp)
+#    #---------------------
+#
+#    vmin, vmax = np.array([5e1, 1e4])
+#    norm = colors.LogNorm(vmin=vmin, vmax=vmax)
+#
+#    Plot_model.plane2D(GRID, temperature.total, axisunit = u.au,
+#                       cmap = 'jet', plane = {'z': 0*u.au},
+#                       norm = norm, colorlabel = r'[Kelvin]',
+#                       output = 'TempMidplane_%s.png'%tag, show = False)
+#
+#
+#    vmin, vmax = np.array([5e1, 1e4])
+#    norm = colors.LogNorm(vmin=vmin, vmax=vmax)
+#
+#    Plot_model.plane2D(GRID, temperature.total, axisunit = u.au,
+#                       cmap = 'jet', plane = {'y': 0*u.au},
+#                       norm = norm, colorlabel = r'[Kelvin]',
+#                       output = 'TempVertical_%s.png'%tag, show = False)
+#    
+#    #---------------------
+#    #2D PLOTTING (Emissivity)
+#    #---------------------
+#    vmin, vmax = np.array([3e7, 5e12])
+#    norm = colors.LogNorm(vmin=vmin, vmax=vmax)
+#
+#    Plot_model.plane2D(GRID, temperature.total * dens_plot, axisunit = u.au,
+#                       cmap = 'ocean_r', plane = {'y': 0*u.au},
+#                       norm = norm, colorlabel = r'[$\rho$ T]',
+#                       output = 'Emissivity_%s.png'%tag, show = False)
+#
     #**********************
     #WRITE RADMC-3D FILES
     #**********************
