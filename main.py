@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+
 cwd = Path.cwd().resolve()
 from Line_max import analyze_fits_cube
 #Function to create a folder for a given model and copy dust and line (.inp) properties
@@ -37,6 +38,7 @@ def organize_folder(modelname, molec='co'):
 
 organize_folder('model_Ulrich', molec='ch3oh')
 UlrichDisk(molec='ch3oh')
+
 make_line_image_freq()
 
 

@@ -4,7 +4,7 @@ cube_folder="/home/tubal/repo_tesis/cubes/DIHCA_cubes/shared_data/G335.78/"
 
 cube = SpectralCube.read(cube_folder+"spw0_from_CH3OH.structure15.subcube.fits")
 
-subcube = cube[551:609, :, :]
+subcube = cube[564:596, :, :]
 
 print(cube.shape)
 print(subcube.shape)

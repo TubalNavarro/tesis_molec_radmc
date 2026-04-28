@@ -36,9 +36,9 @@ def make_line_image_freq():
                         help="Line frequency of the cube. DEFAULTS to  223.795666 Hz") # jaquez
     parser.add_argument('-v_sys', '--v_sys', default=-50.51, type=float,
                         help='Systemic velocity of the source in km/s. DEFAULTS TO 0.'  )
-    parser.add_argument('-nchan', '--nchan', default=58, type=int,
+    parser.add_argument('-nchan', '--nchan', default=32, type=int,
                         help="Number of velocity channels to be computed. DEFAULTS to 101.")
-    parser.add_argument('-dv', '--dv', default=0.6261185044031, type=float,   #jaquez
+    parser.add_argument('-dv', '--dv', default=0.6261185044031, type=float,   
                         help="Delta velocity channel, line images will range from -dv*nchan/2 to dv*nchan/2 centered in restfreq. DEFAULTS to 5.0 km/s.") #Jaquez
     parser.add_argument('-sizeau', '--sizeau', default=3168, type=float,
                         help="Maximum sky window extent in au. DEFAULTS to 1200 au.")
@@ -190,4 +190,26 @@ def make_line_image_freq():
     convolve('raw_radmc_header_updated')
     convolve('raw_radmc_csub')
     convolve('raw_radmc_cont')
-    
+
+    cube_name='csub_convolved_Jypbeam_header_update.fits'
+    noise_file='../inputs/G355.78+0.17_2_noise.dat'
+    output_cube = "csub_convolved_noise.fits"
+    random_seed = 42
+    noise_per_channel = np.loadtxt(noise_file)
+    noise_per_channel = np.atleast_1d(noise_per_channel)
+    with fits.open(cube_name) as hdul:
+        data = hdul[0].data.astype(float)
+        header = hdul[0].header.copy()
+
+    nchan = data.shape[0]
+
+    rng = np.random.default_rng(random_seed)
+    data_noisy = data.copy()
+    for i in range(nchan):
+        sigma = noise_per_channel[i]
+        noise = rng.normal(loc=0.0, scale=sigma, size=data[i, :, :].shape)
+        data_noisy[i, :, :] += noise
+    fits.writeto(output_cube, data_noisy, header, overwrite=True)
+
+
+

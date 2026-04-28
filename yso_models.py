@@ -11,7 +11,7 @@ from sf3dmodels import Resolution as Res
 import sf3dmodels.utils.units as u            
 import sf3dmodels.rt as rt        
 import sf3dmodels.utils.constants as ct            
-
+from plot_helpers import *
 #-----------------
 #Extra libraries
 #-----------------
@@ -52,7 +52,7 @@ def write_molecule_files(nx,ny,nz, density, prop, molec=''):
         f.write('----------------------------------------------------------------------------\n')
     
 
-def UlrichDisk(discFlag=True, cavity_ang=60 ,envFlag=True, nmodel=0, MStar=20, MRate=1e-3, Rdisc=700, Arho0=10, Renv=8000, exp_disc=2.25, prop_only=False, molec='co', molec_abund=5e-8, const_T=300):
+def UlrichDisk(discFlag=True, cavity_ang=60 ,envFlag=True, nmodel=0, MStar=20, MRate=1e-3, Rdisc=700, Arho0=10, Renv=8000, exp_disc=2.25, prop_only=False, molec='co', molec_abund=7.5e-7, const_T=300):
 
     t0 = time.time()
 
@@ -222,7 +222,7 @@ def UlrichDisk(discFlag=True, cavity_ang=60 ,envFlag=True, nmodel=0, MStar=20, M
 
     write_molecule_files(nx=nx,ny=ny,nz=nz, density=density, prop=prop, molec=molec)
 
-
+    #plot_1d_props(GRID, prop, density, tag='')
     #-------
     #TIMING
     #-------
