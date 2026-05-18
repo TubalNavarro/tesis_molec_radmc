@@ -21,3 +21,5 @@ cleanline:
 
 clean_subproducts:
 	find model_* -type f ! -name "*.fits" -delete
+clean_pv:
+	@rm -r pv/*

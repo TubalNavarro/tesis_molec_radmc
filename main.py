@@ -35,14 +35,26 @@ def organize_folder(modelname, molec='co'):
         '%s/partitionfunction_%s.inp'%(modelname, molec)
     )
     os.chdir(modelname)
-
-organize_folder('model_Ulrich', molec='ch3oh')
-UlrichDisk(molec='ch3oh')
-
-make_line_image_freq()
+    
 
 
+#for incl in [5,15,30, 45,60, 75]:
+#    organize_folder(f'model_Hamb_i={incl}', molec='ch3oh')
+#    Hamburguers()
+#    make_line_image_freq(incl=incl)
+#
+#for r in [150,200, 300, 400, 500, 600, 1000]:
+#    organize_folder(f'model_Hamb_rdisc={r}', molec='ch3oh')
+#    Hamburguers(Rdisc=r)
+#    make_line_image_freq()    
 
+#for exp in [0.3,0.4,0.5,0.6,0.7]:
+#    organize_folder(f'model_Hamb_dens_exp={exp}', molec='ch3oh')
+#    Hamburguers(p=exp)
+#    make_line_image_freq()  
 
-
+organize_folder('model_Ulrich_test', molec='ch3oh')
+UlrichDisk(Rdisc=800, cavity_ang=60)
+make_line_image_freq(incl=80)  
+  
 

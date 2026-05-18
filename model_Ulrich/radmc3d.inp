@@ -1,7 +1,0 @@
-nphot = 100000000
-incl_dust = 1
-setthreads = 8
-incl_freefree = 0
-tgas_eq_tdust = 1
-modified_random_walk = 1
-catch_doppler_resolution = 0.2

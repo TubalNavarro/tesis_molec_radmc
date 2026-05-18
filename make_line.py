@@ -11,7 +11,8 @@ from spectral_cube import SpectralCube
 import sys
 sys.path.append('/Users/migueljaquez/Estudiantes/Tubal/repo_tesis-main/radmc3d-2.0/python/radmc3dPy')
 import radmc3dPy.image as image
-
+from astropy.coordinates import SkyCoord
+from extract_pv import *
 import os
 import shutil
 import subprocess
@@ -23,12 +24,12 @@ import sys
 from argparse import ArgumentParser
 
 # make a line observations and output in frequency units as a real observation.
-def make_line_image_freq():
+def make_line_image_freq(incl=15):
     parser = ArgumentParser(prog='Make line images from sf3d model', description='Make line images and readable fits cube')
     
     ### RADMC simulation options 
 
-     # Cube rest. frec. 233.7722702480E9  ##Object frec. +Delta v
+     # Cube rest. frec. 233.7722702480E9  
 
     parser.add_argument('-restfreq', '--restfreq', default=233.772270248e9, type=float,  
                         help="Rest frequency of the cube. DEFAULTS to  223.72571493e9 Hz") # jaquez
@@ -36,15 +37,15 @@ def make_line_image_freq():
                         help="Line frequency of the cube. DEFAULTS to  223.795666 Hz") # jaquez
     parser.add_argument('-v_sys', '--v_sys', default=-50.51, type=float,
                         help='Systemic velocity of the source in km/s. DEFAULTS TO 0.'  )
-    parser.add_argument('-nchan', '--nchan', default=32, type=int,
+    parser.add_argument('-nchan', '--nchan', default=58, type=int,
                         help="Number of velocity channels to be computed. DEFAULTS to 101.")
     parser.add_argument('-dv', '--dv', default=0.6261185044031, type=float,   
                         help="Delta velocity channel, line images will range from -dv*nchan/2 to dv*nchan/2 centered in restfreq. DEFAULTS to 5.0 km/s.") #Jaquez
-    parser.add_argument('-sizeau', '--sizeau', default=3168, type=float,
+    parser.add_argument('-sizeau', '--sizeau', default=3296., type=float,
                         help="Maximum sky window extent in au. DEFAULTS to 1200 au.")
-    parser.add_argument('-nx', '--nx', default=99, type=int, 
+    parser.add_argument('-nx', '--nx', default=103, type=int, 
                         help="Number of pixels per spatial dimension. DEFAULTS to 264")
-    parser.add_argument('-incl', '--incl', default=60, type=float,
+    parser.add_argument('-incl', '--incl', default=incl, type=float,
                         help="Disc inclination. DEFAULTS to 50.32 deg.")
     parser.add_argument('-dpc', '--dpc', default=3200, type=float,
                         help="Distance to source in pc. DEFAULTS to 100 pc.")
@@ -52,7 +53,7 @@ def make_line_image_freq():
                         help="Run radmc3d? DEFAULTS to 0.")
 
     #convolution image options
-    parser.add_argument('-c', '--convolve', action="store_false", #type=bool, #jaquez, we change this to a boolean
+    parser.add_argument('-c', '--convolve', action="store_false", 
                         help="Convolve datacube with beam.")
     parser.add_argument('-bmaj', '--bmaj', default=0.109, type=float,
                         help="Beam major axis. DEFAULTS to 0.05 arcsec.")
@@ -97,6 +98,7 @@ def make_line_image_freq():
     #RUN RADMC3D
     #**************
     if args.radmc3d: 
+
         subprocess.run('%s image iline  %d widthkms %.5f linenlam %d npix %d sizeau %.1f incl %.1f'%(radmc3d, args.transition ,dv_half, args.nchan, args.nx, args.sizeau, args.incl), shell=True) 
         shutil.move('image.out', workdir+args.fileimage) 
 
@@ -212,4 +214,27 @@ def make_line_image_freq():
     fits.writeto(output_cube, data_noisy, header, overwrite=True)
 
 
+##########MAKE PV################
+
+
+
+
+    center = SkyCoord(
+        "16h29m46.12974s",
+        "-48d15m49.9512s",
+        frame="icrs"
+    )
+
+    make_pv_diagram(cube_file=output_cube,
+        output_file='pv.fits',
+        center_coord=center,
+        pa_deg=90,
+        length_arcsec=0.991,
+        width_arcsec=0.03,
+        spacing_arcsec=0.01,
+        restfreq_GHz=args.linefreq*1e-9,
+    )
+
+
+    compute_residuals('../pv/pv_G355.78+0.17_2_freq.fits', 'pv.fits', 'pv_residuals.fits', floor=6e-3)
 
