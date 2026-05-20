@@ -24,30 +24,30 @@ import sys
 from argparse import ArgumentParser
 
 # make a line observations and output in frequency units as a real observation.
-def make_line_image_freq(incl=15):
+def make_line_image_freq(incl=70):
     parser = ArgumentParser(prog='Make line images from sf3d model', description='Make line images and readable fits cube')
     
     ### RADMC simulation options 
 
      # Cube rest. frec. 233.7722702480E9  
 
-    parser.add_argument('-restfreq', '--restfreq', default=233.772270248e9, type=float,  
+    parser.add_argument('-restfreq', '--restfreq', default=335.582017e9, type=float,  
                         help="Rest frequency of the cube. DEFAULTS to  223.72571493e9 Hz") # jaquez
-    parser.add_argument('-linefreq', '--linefreq', default=233.795666e9, type=float,  
+    parser.add_argument('-linefreq', '--linefreq', default=335.582017e9, type=float,  
                         help="Line frequency of the cube. DEFAULTS to  223.795666 Hz") # jaquez
-    parser.add_argument('-v_sys', '--v_sys', default=-50.51, type=float,
+    parser.add_argument('-v_sys', '--v_sys', default=-43.5, type=float,
                         help='Systemic velocity of the source in km/s. DEFAULTS TO 0.'  )
-    parser.add_argument('-nchan', '--nchan', default=58, type=int,
+    parser.add_argument('-nchan', '--nchan', default=56, type=int,
                         help="Number of velocity channels to be computed. DEFAULTS to 101.")
-    parser.add_argument('-dv', '--dv', default=0.6261185044031, type=float,   
+    parser.add_argument('-dv', '--dv', default=0.436180476698, type=float,   
                         help="Delta velocity channel, line images will range from -dv*nchan/2 to dv*nchan/2 centered in restfreq. DEFAULTS to 5.0 km/s.") #Jaquez
-    parser.add_argument('-sizeau', '--sizeau', default=3296., type=float,
+    parser.add_argument('-sizeau', '--sizeau', default=6847.5, type=float,
                         help="Maximum sky window extent in au. DEFAULTS to 1200 au.")
-    parser.add_argument('-nx', '--nx', default=103, type=int, 
+    parser.add_argument('-nx', '--nx', default=249, type=int, 
                         help="Number of pixels per spatial dimension. DEFAULTS to 264")
     parser.add_argument('-incl', '--incl', default=incl, type=float,
                         help="Disc inclination. DEFAULTS to 50.32 deg.")
-    parser.add_argument('-dpc', '--dpc', default=3200, type=float,
+    parser.add_argument('-dpc', '--dpc', default=2500, type=float,
                         help="Distance to source in pc. DEFAULTS to 100 pc.")
     parser.add_argument('-radmc3d', '--radmc3d', default=1, type=int,
                         help="Run radmc3d? DEFAULTS to 0.")
@@ -55,18 +55,18 @@ def make_line_image_freq(incl=15):
     #convolution image options
     parser.add_argument('-c', '--convolve', action="store_false", 
                         help="Convolve datacube with beam.")
-    parser.add_argument('-bmaj', '--bmaj', default=0.109, type=float,
+    parser.add_argument('-bmaj', '--bmaj', default=0.073, type=float,
                         help="Beam major axis. DEFAULTS to 0.05 arcsec.")
-    parser.add_argument('-bmin', '--bmin', default=0.067, type=float,
+    parser.add_argument('-bmin', '--bmin', default=0.055, type=float,
                         help="Beam minor axis. DEFAULTS to 0.05 arcsec.")
-    parser.add_argument('-bpa', '--bpa', default=-42, type=float,
+    parser.add_argument('-bpa', '--bpa', default=54.4, type=float,
                         help="Beam position angle. DEFAULTS to 0.0 deg.")
     parser.add_argument("--add_noise", action="store_true", help="add gaussian noise to the cube") #jaquez
     parser.add_argument("--noise_std", default=1e-3, type=float, help="noise standard deviation") #jaquez
 
     # add a wcs 
 
-    parser.add_argument('-coord','--coord', default='16h29m46.12974s -48d15m49.9512s', type=str, 
+    parser.add_argument('-coord','--coord', default='15h57m59.799s -53d58m00.528s', type=str, 
                         help='Coordinates of the object in the sky.' ) 
     parser.add_argument('-fi', '--fileimage', default='image_line.out', type=str,
                         help="Output image file name. DEFAULTS to 'image_line.out'.")
@@ -193,8 +193,12 @@ def make_line_image_freq(incl=15):
     convolve('raw_radmc_csub')
     convolve('raw_radmc_cont')
 
+
+
+
+
     cube_name='csub_convolved_Jypbeam_header_update.fits'
-    noise_file='../inputs/G355.78+0.17_2_noise.dat'
+    noise_file='../inputs/G328_noise.dat'
     output_cube = "csub_convolved_noise.fits"
     random_seed = 42
     noise_per_channel = np.loadtxt(noise_file)
@@ -217,11 +221,9 @@ def make_line_image_freq(incl=15):
 ##########MAKE PV################
 
 
-
-
     center = SkyCoord(
-        "16h29m46.12974s",
-        "-48d15m49.9512s",
+        "15h57m59.799s",
+        "-53d58m00.528s",
         frame="icrs"
     )
 
@@ -229,12 +231,12 @@ def make_line_image_freq(incl=15):
         output_file='pv.fits',
         center_coord=center,
         pa_deg=90,
-        length_arcsec=0.991,
-        width_arcsec=0.03,
-        spacing_arcsec=0.01,
+        length_arcsec=2.7,
+        width_arcsec=0.0550,
+        spacing_arcsec=0.0110,
         restfreq_GHz=args.linefreq*1e-9,
     )
 
 
-    compute_residuals('../pv/pv_G355.78+0.17_2_freq.fits', 'pv.fits', 'pv_residuals.fits', floor=6e-3)
+    compute_residuals('../pv/pv_G328.fits', 'pv.fits', 'pv_residuals.fits', floor=6e-3)
 

@@ -53,8 +53,8 @@ def organize_folder(modelname, molec='co'):
 #    Hamburguers(p=exp)
 #    make_line_image_freq()  
 
-organize_folder('model_Ulrich_test', molec='ch3oh')
-UlrichDisk(Rdisc=800, cavity_ang=60)
+organize_folder('model_Ulrich_G328_test', molec='ch3oh')
+UlrichDisk(Rdisc=1000)
 make_line_image_freq(incl=80)  
   
 

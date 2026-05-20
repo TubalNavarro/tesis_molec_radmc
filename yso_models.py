@@ -52,7 +52,7 @@ def write_molecule_files(nx,ny,nz, density, prop, molec=''):
         f.write('----------------------------------------------------------------------------\n')
     
 
-def UlrichDisk(discFlag=True, cavity_ang=80 ,envFlag=True, nmodel=0, MStar=15, MRate=5e-4, Rdisc=300, Arho0=5, Renv=8000, exp_disc=2.25, prop_only=False, molec='ch3oh', molec_abund=7.5e-6, const_T=300):
+def UlrichDisk(discFlag=True, cavity_ang=10 ,envFlag=True, nmodel=0, MStar=17, MRate=1e-3, Rdisc=300, Arho0=5, Renv=10000, exp_disc=2.25, prop_only=False, molec='ch3oh', molec_abund=7.5e-6, const_T=300):
 
     t0 = time.time()
 
@@ -66,7 +66,7 @@ def UlrichDisk(discFlag=True, cavity_ang=80 ,envFlag=True, nmodel=0, MStar=15, M
     print('Renv: {}'.format(Renv))
     #------------------
     MStar = MStar * u.MSun
-    #LStar = u.LSun * ( MStar/u.MSun )**4  #L propto M**4?
+    LStar = u.LSun * ( MStar/u.MSun )**4  #L propto M**4?
     
     #-------------------------------
     #Parameters for the Pringle disc
@@ -76,7 +76,7 @@ def UlrichDisk(discFlag=True, cavity_ang=80 ,envFlag=True, nmodel=0, MStar=15, M
 
     #RStar = 26 * u.RSun * ( MStar/u.MSun )**0.27 * ( MRate / (1e-3*u.MSun_yr) )**0.41
 
-    LStar=  1e5*u.Lsun
+    #LStar=  1e5*u.Lsun
 
     print('RStar:'.format(RStar))
     TStar = u.TSun * ( (LStar/u.LSun) / (RStar/u.RSun)**2 )**0.25
@@ -89,8 +89,8 @@ def UlrichDisk(discFlag=True, cavity_ang=80 ,envFlag=True, nmodel=0, MStar=15, M
     #---------------
     #Cubic grid, each edge ranges [-size, size] au.
 
-    sizex = sizey = sizez = 1648 * u.au #half size
-    Nx = Ny = Nz = 103 #Number of divisions for each axis
+    sizex = sizey = sizez = 3423.75 * u.au #half size
+    Nx = Ny = Nz = 259 #Number of divisions for each axis
     GRID = Model.grid([sizex, sizey, sizez], [Nx, Ny, Nz], rt_code = 'radmc3d', include_zero = True)
     NPoints = GRID.NPoints #Final number of nodes in the grid
   

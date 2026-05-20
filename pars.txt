@@ -1,0 +1,2 @@
+0.011000000000001599 #pixel_delt asrcsec
+2.6950000000003915 #cut length arcsec
