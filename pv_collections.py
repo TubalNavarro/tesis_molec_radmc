@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 from pathlib import Path
 import shutil
@@ -12,9 +10,6 @@ import astropy.units as u
 from astropy.io import fits
 
 
-# ============================================================
-# Configuración
-# ============================================================
 
 BASE_DIR = Path(".")
 OUTPUT_DIR = BASE_DIR / "pv_collections_G328_Test"
@@ -22,7 +17,6 @@ OUTPUT_DIR = BASE_DIR / "pv_collections_G328_Test"
 PV_FILES = ["pv.fits", "pv_residuals.fits"]
 
 # Frecuencia de reposo de la línea.
-# Cambia este valor si estás usando otra transición.
 REST_FREQUENCY = 335.582017 * u.GHz
 
 GROUPS = {
@@ -49,9 +43,7 @@ GROUPS = {
 }
 
 
-# ============================================================
 # Funciones auxiliares
-# ============================================================
 
 def safe_name(folder_name, fits_name):
     """
@@ -125,11 +117,6 @@ def copy_pv_files(base_dir=BASE_DIR, output_dir=OUTPUT_DIR):
 
 
 def get_rest_frequency(header, default_rest_frequency=None):
-    """
-    Busca la frecuencia de reposo en el header.
-
-    Si no la encuentra, usa default_rest_frequency.
-    """
 
     possible_keys = [
         "RESTFRQ",
@@ -158,21 +145,14 @@ def get_axis_centers_from_header(
     output_unit=None,
     rest_frequency=None,
 ):
-    """
-    Construye los centros del eje físico.
 
-    Si el eje está en Hz y se pide km/s, convierte frecuencia a velocidad
-    usando la convención radio:
-
-        v = c (nu_0 - nu) / nu_0
-    """
 
     crpix = header.get(f"CRPIX{axis_number}", 1.0)
     crval = header.get(f"CRVAL{axis_number}", 0.0)
     cdelt = header.get(f"CDELT{axis_number}", 1.0)
     cunit = header.get(f"CUNIT{axis_number}", "")
 
-    # FITS usa pixeles indexados desde 1
+   
     pix_centers = np.arange(n_pix) + 1
 
     world_centers = crval + (pix_centers - crpix) * cdelt
@@ -186,14 +166,9 @@ def get_axis_centers_from_header(
             if output_unit is not None:
 
                 try:
-                    # Conversión directa normal:
-                    # deg -> arcsec, m/s -> km/s, etc.
                     world_centers = world_centers.to(output_unit)
 
                 except u.UnitConversionError:
-
-                    # Caso especial:
-                    # frecuencia -> velocidad
                     if unit.is_equivalent(u.Hz) and output_unit.is_equivalent(u.km / u.s):
 
                         restfreq = get_rest_frequency(
@@ -234,9 +209,8 @@ def get_axis_centers_from_header(
 
 
 def centers_to_edges(centers):
-    """
-    Convierte centros de pixeles a bordes para usar con imshow(extent=...).
-    """
+    
+    #Convierte centros de pixeles a bordes para usar con imshow(extent=...).
 
     centers = np.asarray(centers, dtype=float)
     n_pix = len(centers)
@@ -264,10 +238,8 @@ def get_axis_edges_from_header(
     output_unit=None,
     rest_frequency=None,
 ):
-    """
-    Construye los bordes del eje físico para usar con imshow(extent=...).
-    """
-
+    
+    #Construye los bordes del eje físico para usar con imshow(extent=...).
     centers = get_axis_centers_from_header(
         header=header,
         axis_number=axis_number,
@@ -280,12 +252,8 @@ def get_axis_edges_from_header(
 
 
 def recenter_edges_to_middle(edges):
-    """
-    Re-centra un eje para que el centro geométrico del mapa sea 0.
-
-    Ejemplo:
-        0 a 10 arcsec  ->  -5 a +5 arcsec
-    """
+    
+    #Re-centra un eje para que el centro geométrico del mapa sea 0.
 
     edges = np.asarray(edges, dtype=float)
 
@@ -295,9 +263,9 @@ def recenter_edges_to_middle(edges):
 
 
 def get_colorbar_label(header, is_residual=False):
-    """
-    Construye la etiqueta de la barra de color usando BUNIT si existe.
-    """
+    
+    #Construye la etiqueta de la barra de color usando BUNIT si existe.
+  
 
     bunit = header.get("BUNIT", "").strip()
 
@@ -323,20 +291,6 @@ def fits_to_png(
     residual_cmap="RdBu_r",
     percentile_clip=(1, 99),
 ):
-    """
-    Convierte un archivo FITS 2D a PNG.
-
-    Para pv.fits:
-        usa cmap='inferno'.
-
-    Para pv_residuals.fits:
-        usa residual_cmap='RdBu_r',
-        centrado en cero con TwoSlopeNorm.
-
-    Además usa coordenadas físicas:
-        x = offset en arcsec, recentrado al centro del PV
-        y = velocidad en km/s
-    """
 
     fits_path = Path(fits_path)
 
@@ -370,8 +324,7 @@ def fits_to_png(
     # Ejes físicos del diagrama PV
     # ========================================================
 
-    # Eje x: OFFSET
-    # Si CUNIT1 está en deg, lo convierte a arcsec.
+
     x_edges = get_axis_edges_from_header(
         header=header,
         axis_number=1,
@@ -379,13 +332,8 @@ def fits_to_png(
         output_unit=u.arcsec,
     )
 
-    # Recentrar el offset respecto al centro geométrico del PV.
-    # Esto hace que el centro horizontal del mapa sea x = 0 arcsec.
     x_edges = recenter_edges_to_middle(x_edges)
 
-    # Eje y: velocidad
-    # Si CUNIT2 está en m/s, lo convierte a km/s.
-    # Si CUNIT2 está en Hz, lo convierte a km/s usando REST_FREQUENCY.
     y_edges = get_axis_edges_from_header(
         header=header,
         axis_number=2,
@@ -404,9 +352,6 @@ def fits_to_png(
     # Detecta si es un archivo de residuos
     is_residual = "residual" in fits_path.stem.lower()
 
-    # ========================================================
-    # Figura
-    # ========================================================
 
     plt.figure(figsize=(7, 5))
 

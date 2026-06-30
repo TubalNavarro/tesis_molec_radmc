@@ -176,3 +176,7 @@ cython_debug/
 #model folders
 model*/
 
+#PV diagrams .png folders
+pv_collections*/
+
+README.md
