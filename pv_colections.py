@@ -6,6 +6,9 @@ import shutil
 
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.colors import TwoSlopeNorm
+
+import astropy.units as u
 from astropy.io import fits
 
 
@@ -13,31 +16,55 @@ from astropy.io import fits
 # Configuración
 # ============================================================
 
-BASE_DIR = Path(".")   # cambia esto si corres el script desde otro lugar
-OUTPUT_DIR = BASE_DIR / "pv_collections_Hamb"
+BASE_DIR = Path(".")
+OUTPUT_DIR = BASE_DIR / "pv_collections_G328_Test"
 
 PV_FILES = ["pv.fits", "pv_residuals.fits"]
 
+# Frecuencia de reposo de la línea.
+# Cambia este valor si estás usando otra transición.
+REST_FREQUENCY = 335.582017 * u.GHz
+
 GROUPS = {
-    "Hamb_inclination": "model_Hamb_i=*",
-    "Hamb_rdisc": "model_Hamb_rdisc=*",
-    "Hamb_exponent": "model_Hamb_dens_exp=*",
+    "Rdisc": "model_Ulrich_rdisc=*",
+    "Arho0": "model_Ulrich_dens_Arho0=*",
+    "BT": "model_Ulrich_BT=*",
+    "Incl": "model_Ulrich_i=*",
+    "test": "model_Ulrich_test",
+    "MStar": "model_Ulrich_MStar=*",
+    "MRate": "model_Ulrich_Mrate=*",
+    "T10": "model_Ulrich_T10=*",
+    "Diagnostic": "model_Ulrich_nodisk_Diagnostic*",
+    "nodisc_Rdisc": "model_Ulrich_nodisk_rdisc=*",
+    "nodisc_Arho0": "model_Ulrich_nodisk_dens_Arho0=*",
+    "nodisc_BT": "model_Ulrich_nodisk_BT=*",
+    "nodisc_Incl": "model_Ulrich_nodisk_i=*",
+    "nodisc_test": "model_Ulrich_nodisk_G328_test",
+    "nodisc_MStar": "model_Ulrich_nodisk_MStar=*",
+    "nodisc_MRate": "model_Ulrich_nodisk_Mrate=*",
+    "nodisc_T10": "model_Ulrich_nodisk_T10=*",
+    "nodisc_Diagnostic": "model_Ulrich_nodisk_Diagnostic*",
+    "nodisc_exp": "model_Ulrich_nodisk_exp=*",
+    "exp": "model_Ulrich_exp=*"
 }
 
 
 # ============================================================
-# Funciones
+# Funciones auxiliares
 # ============================================================
 
 def safe_name(folder_name, fits_name):
     """
     Convierte, por ejemplo:
+
         folder_name = model_Ulrich_rdisc=150
         fits_name   = pv.fits
 
     en:
+
         model_Ulrich_rdisc_150_pv.fits
     """
+
     stem = Path(fits_name).stem
 
     clean_folder_name = (
@@ -97,24 +124,218 @@ def copy_pv_files(base_dir=BASE_DIR, output_dir=OUTPUT_DIR):
     return copied_files
 
 
-def fits_to_png(fits_path, png_path=None, cmap="inferno", percentile_clip=(1, 99)):
+def get_rest_frequency(header, default_rest_frequency=None):
+    """
+    Busca la frecuencia de reposo en el header.
+
+    Si no la encuentra, usa default_rest_frequency.
+    """
+
+    possible_keys = [
+        "RESTFRQ",
+        "RESTFREQ",
+        "RESTFREQU",
+        "REST_FREQ",
+    ]
+
+    for key in possible_keys:
+        if key in header:
+            return header[key] * u.Hz
+
+    if default_rest_frequency is not None:
+        return default_rest_frequency
+
+    raise ValueError(
+        "No encontré RESTFRQ/RESTFREQ en el header. "
+        "Define REST_FREQUENCY manualmente."
+    )
+
+
+def get_axis_centers_from_header(
+    header,
+    axis_number,
+    n_pix,
+    output_unit=None,
+    rest_frequency=None,
+):
+    """
+    Construye los centros del eje físico.
+
+    Si el eje está en Hz y se pide km/s, convierte frecuencia a velocidad
+    usando la convención radio:
+
+        v = c (nu_0 - nu) / nu_0
+    """
+
+    crpix = header.get(f"CRPIX{axis_number}", 1.0)
+    crval = header.get(f"CRVAL{axis_number}", 0.0)
+    cdelt = header.get(f"CDELT{axis_number}", 1.0)
+    cunit = header.get(f"CUNIT{axis_number}", "")
+
+    # FITS usa pixeles indexados desde 1
+    pix_centers = np.arange(n_pix) + 1
+
+    world_centers = crval + (pix_centers - crpix) * cdelt
+
+    if cunit not in ["", None]:
+
+        try:
+            unit = u.Unit(cunit)
+            world_centers = world_centers * unit
+
+            if output_unit is not None:
+
+                try:
+                    # Conversión directa normal:
+                    # deg -> arcsec, m/s -> km/s, etc.
+                    world_centers = world_centers.to(output_unit)
+
+                except u.UnitConversionError:
+
+                    # Caso especial:
+                    # frecuencia -> velocidad
+                    if unit.is_equivalent(u.Hz) and output_unit.is_equivalent(u.km / u.s):
+
+                        restfreq = get_rest_frequency(
+                            header,
+                            default_rest_frequency=rest_frequency,
+                        )
+
+                        world_centers = world_centers.to(
+                            output_unit,
+                            equivalencies=u.doppler_radio(restfreq),
+                        )
+
+                    else:
+                        print(
+                            f"  Advertencia: no pude convertir "
+                            f"CUNIT{axis_number}='{cunit}' a {output_unit}."
+                        )
+                        print("  Se usarán las unidades originales del header.")
+
+            # Quitar unidades para evitar errores con arrays de float
+            world_centers = world_centers.value
+
+        except Exception as e:
+            print(
+                f"  Advertencia: problema leyendo CUNIT{axis_number}='{cunit}'."
+            )
+            print(f"  Se usarán valores numéricos sin convertir. Error: {e}")
+
+            world_centers = np.asarray(
+                crval + (pix_centers - crpix) * cdelt,
+                dtype=float,
+            )
+
+    else:
+        world_centers = np.asarray(world_centers, dtype=float)
+
+    return world_centers
+
+
+def centers_to_edges(centers):
+    """
+    Convierte centros de pixeles a bordes para usar con imshow(extent=...).
+    """
+
+    centers = np.asarray(centers, dtype=float)
+    n_pix = len(centers)
+
+    if n_pix == 1:
+        return np.array([centers[0] - 0.5, centers[0] + 0.5])
+
+    edges = np.empty(n_pix + 1)
+
+    edges[1:-1] = 0.5 * (centers[:-1] + centers[1:])
+
+    first_step = centers[1] - centers[0]
+    last_step = centers[-1] - centers[-2]
+
+    edges[0] = centers[0] - 0.5 * first_step
+    edges[-1] = centers[-1] + 0.5 * last_step
+
+    return edges
+
+
+def get_axis_edges_from_header(
+    header,
+    axis_number,
+    n_pix,
+    output_unit=None,
+    rest_frequency=None,
+):
+    """
+    Construye los bordes del eje físico para usar con imshow(extent=...).
+    """
+
+    centers = get_axis_centers_from_header(
+        header=header,
+        axis_number=axis_number,
+        n_pix=n_pix,
+        output_unit=output_unit,
+        rest_frequency=rest_frequency,
+    )
+
+    return centers_to_edges(centers)
+
+
+def recenter_edges_to_middle(edges):
+    """
+    Re-centra un eje para que el centro geométrico del mapa sea 0.
+
+    Ejemplo:
+        0 a 10 arcsec  ->  -5 a +5 arcsec
+    """
+
+    edges = np.asarray(edges, dtype=float)
+
+    center = 0.5 * (edges[0] + edges[-1])
+
+    return edges - center
+
+
+def get_colorbar_label(header, is_residual=False):
+    """
+    Construye la etiqueta de la barra de color usando BUNIT si existe.
+    """
+
+    bunit = header.get("BUNIT", "").strip()
+
+    if is_residual:
+        label = "Residual"
+    else:
+        label = "Intensidad"
+
+    if bunit != "":
+        label += f" [{bunit}]"
+
+    return label
+
+
+# ============================================================
+# Conversión FITS -> PNG
+# ============================================================
+
+def fits_to_png(
+    fits_path,
+    png_path=None,
+    cmap="inferno",
+    residual_cmap="RdBu_r",
+    percentile_clip=(1, 99),
+):
     """
     Convierte un archivo FITS 2D a PNG.
 
-    Parameters
-    ----------
-    fits_path : str or Path
-        Ruta al archivo .fits.
+    Para pv.fits:
+        usa cmap='inferno'.
 
-    png_path : str or Path, optional
-        Ruta de salida .png. Si no se da, usa el mismo nombre del FITS.
+    Para pv_residuals.fits:
+        usa residual_cmap='RdBu_r',
+        centrado en cero con TwoSlopeNorm.
 
-    cmap : str
-        Mapa de color de matplotlib.
-
-    percentile_clip : tuple
-        Percentiles para ajustar el contraste.
-        Por defecto usa percentiles 1 y 99.
+    Además usa coordenadas físicas:
+        x = offset en arcsec, recentrado al centro del PV
+        y = velocidad en km/s
     """
 
     fits_path = Path(fits_path)
@@ -126,11 +347,15 @@ def fits_to_png(fits_path, png_path=None, cmap="inferno", percentile_clip=(1, 99
 
     with fits.open(fits_path) as hdul:
         data = hdul[0].data
+        header = hdul[0].header
 
     data = np.squeeze(data)
 
     if data.ndim != 2:
-        print(f"  Saltando {fits_path}, no es 2D después de squeeze. Shape = {data.shape}")
+        print(
+            f"  Saltando {fits_path}, no es 2D después de squeeze. "
+            f"Shape = {data.shape}"
+        )
         return None
 
     finite = np.isfinite(data)
@@ -139,21 +364,101 @@ def fits_to_png(fits_path, png_path=None, cmap="inferno", percentile_clip=(1, 99
         print(f"  Saltando {fits_path}, no tiene valores finitos.")
         return None
 
-    vmin, vmax = np.nanpercentile(data[finite], percentile_clip)
+    ny, nx = data.shape
 
-    plt.figure(figsize=(7, 5))
-    plt.imshow(
-        data,
-        origin="lower",
-        cmap=cmap,
-        aspect="auto",
-        vmin=vmin,
-        vmax=vmax,
+    # ========================================================
+    # Ejes físicos del diagrama PV
+    # ========================================================
+
+    # Eje x: OFFSET
+    # Si CUNIT1 está en deg, lo convierte a arcsec.
+    x_edges = get_axis_edges_from_header(
+        header=header,
+        axis_number=1,
+        n_pix=nx,
+        output_unit=u.arcsec,
     )
 
-    plt.colorbar(label="Intensidad")
-    plt.xlabel("Pixel")
-    plt.ylabel("Pixel")
+    # Recentrar el offset respecto al centro geométrico del PV.
+    # Esto hace que el centro horizontal del mapa sea x = 0 arcsec.
+    x_edges = recenter_edges_to_middle(x_edges)
+
+    # Eje y: velocidad
+    # Si CUNIT2 está en m/s, lo convierte a km/s.
+    # Si CUNIT2 está en Hz, lo convierte a km/s usando REST_FREQUENCY.
+    y_edges = get_axis_edges_from_header(
+        header=header,
+        axis_number=2,
+        n_pix=ny,
+        output_unit=u.km / u.s,
+        rest_frequency=REST_FREQUENCY,
+    )
+
+    extent = [
+        x_edges[0],
+        x_edges[-1],
+        y_edges[0],
+        y_edges[-1],
+    ]
+
+    # Detecta si es un archivo de residuos
+    is_residual = "residual" in fits_path.stem.lower()
+
+    # ========================================================
+    # Figura
+    # ========================================================
+
+    plt.figure(figsize=(7, 5))
+
+    if is_residual:
+
+        # Escala simétrica alrededor de cero
+        max_abs = np.nanpercentile(
+            np.abs(data[finite]),
+            percentile_clip[1],
+        )
+
+        if max_abs == 0 or not np.isfinite(max_abs):
+            max_abs = 1.0
+
+        norm = TwoSlopeNorm(
+            vmin=-max_abs,
+            vcenter=0.0,
+            vmax=max_abs,
+        )
+
+        im = plt.imshow(
+            data,
+            origin="lower",
+            cmap=residual_cmap,
+            aspect="auto",
+            extent=extent,
+            norm=norm,
+        )
+
+    else:
+
+        vmin, vmax = np.nanpercentile(data[finite], percentile_clip)
+
+        if vmin == vmax:
+            vmin = np.nanmin(data[finite])
+            vmax = np.nanmax(data[finite])
+
+        im = plt.imshow(
+            data,
+            origin="lower",
+            cmap=cmap,
+            aspect="auto",
+            extent=extent,
+            vmin=vmin,
+            vmax=vmax,
+        )
+
+    cbar_label = get_colorbar_label(header, is_residual=is_residual)
+    plt.colorbar(im, label=cbar_label)
+
+    plt.xlabel("Offset [arcsec]")
+    plt.ylabel(r"$v_\mathrm{rad}$ [km s$^{-1}$]")
     plt.title(fits_path.stem)
 
     plt.tight_layout()
@@ -188,7 +493,13 @@ def convert_all_copied_fits_to_png(output_dir=OUTPUT_DIR):
 
         png_path = png_dir / fits_path.with_suffix(".png").name
 
-        result = fits_to_png(fits_path, png_path=png_path)
+        result = fits_to_png(
+            fits_path=fits_path,
+            png_path=png_path,
+            cmap="inferno",
+            residual_cmap="RdBu_r",
+            percentile_clip=(1, 99),
+        )
 
         if result is not None:
             png_files.append(result)

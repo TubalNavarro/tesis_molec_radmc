@@ -24,7 +24,7 @@ import sys
 from argparse import ArgumentParser
 
 # make a line observations and output in frequency units as a real observation.
-def make_line_image_freq(incl=70):
+def make_line_image_freq(incl=62.5):
     parser = ArgumentParser(prog='Make line images from sf3d model', description='Make line images and readable fits cube')
     
     ### RADMC simulation options 
@@ -78,7 +78,7 @@ def make_line_image_freq(incl=70):
     #************************
     #PATHS AND WORKING FOLDER
     #************************
-    radmc3d = '/home/tubal/repo_tesis/radmc3d-2.0/src/radmc3d'
+    radmc3d = '/home/tubal/scisoft/radmc3d-2.0/src/radmc3d'
     workdir = './'
     fileimage = 'image_line.out'
 
@@ -238,5 +238,5 @@ def make_line_image_freq(incl=70):
     )
 
 
-    compute_residuals('../pv/pv_G328.fits', 'pv.fits', 'pv_residuals.fits', floor=6e-3)
+    compute_residuals('../pv/pv_G328_flipped_xy_freq.fits', 'pv.fits', 'pv_residuals.fits')
 

@@ -8,10 +8,10 @@ Script that creates possible models of molecular emission for RADMC-3D
 
 from sf3dmodels import Model, Plot_model
 from sf3dmodels import Resolution as Res
-import sf3dmodels.utils.units as u            
+import sf3dmodels.utils.units as u
 import sf3dmodels.rt as rt        
 import sf3dmodels.utils.constants as ct            
-from plot_helpers import *
+
 #-----------------
 #Extra libraries
 #-----------------
@@ -25,24 +25,22 @@ import time
     #Write molecule number density file
     #********************************
 
-def write_molecule_files(nx,ny,nz, density, prop, molec=''):
-    with open('numberdens_%s.inp'%molec,'w+') as f:
+def write_molecule_files(nx, ny, nz, density, prop, molec=''):
+    with open('numberdens_%s.inp' % molec, 'w+') as f:
         f.write('1\n')                       # Format number
-        f.write('%d\n'%(nx*ny*nz))           # Nr of cells
-        data = prop['abundance']*density.total*(100**-3) #To 1/cm3 units
+        f.write('%d\n' % (nx * ny * nz))     # Nr of cells
+        data = prop['abundance'] * density.total * (100**-3)  # To 1/cm3 units
         data.tofile(f, sep='\n', format="%13.6e")
         f.write('\n')
 
-    #Lines file
-    with open('lines.inp','w+') as f:
+    # Lines file
+    with open('lines.inp', 'w+') as f:
         f.write('2\n')
         f.write('1\n')
-        f.write('%s    leiden    0    0    0\n'%molec)
+        f.write('%s    leiden    0    0    0\n' % molec)
 
-    #
     # Dust opacity control file
-    #
-    with open('dustopac.inp','w+') as f:
+    with open('dustopac.inp', 'w+') as f:
         f.write('2               Format number of this file\n')
         f.write('1               Nr of dust species\n')
         f.write('============================================================================\n')
@@ -50,9 +48,572 @@ def write_molecule_files(nx,ny,nz, density, prop, molec=''):
         f.write('0               0=Thermal grain\n')
         f.write('silicate        Extension of name of dustkappa_***.inp file\n')
         f.write('----------------------------------------------------------------------------\n')
-    
 
-def UlrichDisk(discFlag=True, cavity_ang=10 ,envFlag=True, nmodel=0, MStar=17, MRate=1e-3, Rdisc=300, Arho0=5, Renv=10000, exp_disc=2.25, prop_only=False, molec='ch3oh', molec_abund=7.5e-6, const_T=300):
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+from pathlib import Path
+from matplotlib.colors import LogNorm
+from scipy.stats import binned_statistic
+
+
+def _safe_lognorm(values, floor=1e-99):
+    """
+    Construye una normalización logarítmica evitando errores si hay ceros,
+    negativos, NaNs o rangos degenerados.
+    """
+    values = np.asarray(values)
+    good = np.isfinite(values) & (values > 0)
+
+    if not np.any(good):
+        return None
+
+    vmin = np.nanmin(values[good])
+    vmax = np.nanmax(values[good])
+
+    vmin = max(vmin, floor)
+
+    if not np.isfinite(vmin) or not np.isfinite(vmax) or vmin >= vmax:
+        vmin = max(vmax / 1e3, floor)
+
+    return LogNorm(vmin=vmin, vmax=vmax)
+
+
+def _binned_profile(r_values, prop_values, r_bins, statistic="median"):
+    """
+    Calcula un perfil radial evitando NaNs e infinitos.
+    """
+    r_values = np.asarray(r_values, dtype=float)
+    prop_values = np.asarray(prop_values, dtype=float)
+
+    valid = np.isfinite(r_values) & np.isfinite(prop_values)
+
+    prof, _, _ = binned_statistic(
+        r_values[valid],
+        prop_values[valid],
+        statistic=statistic,
+        bins=r_bins,
+    )
+
+    return prof
+
+
+def plot_ulrichdisk_diagnostics(
+    GRID,
+    prop,
+    density,
+    Rdisc_au=None,
+    Renv_au=None,
+    tag="",
+    output_dir=".",
+    n_random=6000,
+    show=False,
+    seed=1234,
+):
+    """
+    Plots de diagnóstico para el modelo Ulrich + disco.
+
+    Genera:
+        1) mapas XY de densidad y temperatura en z≈0,
+        2) perfiles radiales esféricos 3D,
+        3) perfiles radiales en el plano medio z≈0,
+        4) visualización 3D por scatter.
+
+    Parámetros
+    ----------
+    GRID : objeto GRID de sf3dmodels
+        Debe contener GRID.XYZ y GRID.NPoints.
+
+    prop : dict
+        Diccionario del modelo. Se espera:
+            prop['temp_dust']
+            prop['velocity'] = [vx, vy, vz]
+
+    density : objeto density de sf3dmodels
+        Se espera density.total.
+
+    Rdisc_au : float, opcional
+        Radio del disco en AU. En tu modelo corresponde a Rdisc.
+
+    Renv_au : float, opcional
+        Radio externo de la envolvente en AU.
+
+    tag : str
+        Sufijo para los nombres de salida.
+
+    output_dir : str
+        Carpeta donde se guardan los plots.
+
+    n_random : int
+        Número máximo de puntos para el scatter 3D.
+
+    show : bool
+        Si True, muestra las figuras en pantalla.
+
+    seed : int
+        Semilla para reproducibilidad del muestreo 3D.
+    """
+
+    print("Generando plots de diagnóstico...")
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    suffix = f"_{tag}" if tag else ""
+
+    # -------------------------
+    # Coordenadas del GRID
+    # -------------------------
+    x_coords = np.asarray(GRID.XYZ[0], dtype=float)
+    y_coords = np.asarray(GRID.XYZ[1], dtype=float)
+    z_coords = np.asarray(GRID.XYZ[2], dtype=float)
+
+    NPoints = GRID.NPoints
+
+    # En sf3dmodels las coordenadas están en las mismas unidades que u.au.
+    # Este script asume que u ya está importado en tu script principal.
+    x_au_all = x_coords / u.au
+    y_au_all = y_coords / u.au
+    z_au_all = z_coords / u.au
+
+    # Radio esférico 3D
+    r_m = np.sqrt(x_coords**2 + y_coords**2 + z_coords**2)
+    r_au = r_m / u.au
+
+    # Tamaño característico de la caja
+    box_half_size_au = np.nanmax(
+        [
+            np.nanmax(np.abs(x_au_all)),
+            np.nanmax(np.abs(y_au_all)),
+            np.nanmax(np.abs(z_au_all)),
+        ]
+    )
+
+    if Renv_au is not None:
+        rmax_plot_au = Renv_au
+    else:
+        rmax_plot_au = box_half_size_au
+
+    # -------------------------
+    # Propiedades físicas
+    # -------------------------
+    n_cm3 = np.asarray(density.total, dtype=float) / 1e6
+    T_K = np.asarray(prop["temp_dust"], dtype=float)
+
+    vx = np.asarray(prop["velocity"][0], dtype=float)
+    vy = np.asarray(prop["velocity"][1], dtype=float)
+    vz = np.asarray(prop["velocity"][2], dtype=float)
+
+    v_kms = np.sqrt(vx**2 + vy**2 + vz**2) / 1e3
+
+    # ============================================================
+    # Corte XY en z = 0
+    # ============================================================
+    z_unique = np.unique(z_coords)
+    z0 = z_unique[np.argmin(np.abs(z_unique))]
+
+    if len(z_unique) > 1:
+        dz_min = np.nanmin(np.abs(np.diff(np.sort(z_unique))))
+        z_tol = 0.1 * dz_min
+    else:
+        z_tol = 0.0
+
+    slice_mask = np.isclose(z_coords, z0, rtol=0.0, atol=z_tol)
+
+    print(f"Puntos en el corte z≈0: {np.sum(slice_mask)}")
+
+    if np.sum(slice_mask) > 0:
+        x_slice = x_coords[slice_mask] / u.au
+        y_slice = y_coords[slice_mask] / u.au
+
+        n_slice = n_cm3[slice_mask]
+        T_slice = T_K[slice_mask]
+
+        vx_slice = vx[slice_mask]
+        vy_slice = vy[slice_mask]
+        vz_slice = vz[slice_mask]
+
+        v_slice_kms = np.sqrt(vx_slice**2 + vy_slice**2 + vz_slice**2) / 1e3
+
+        # Radio cilíndrico en el plano medio z≈0
+        r_midplane_au = np.sqrt(x_slice**2 + y_slice**2)
+
+        x_unique = np.unique(x_slice)
+        y_unique = np.unique(y_slice)
+
+        nx2d = len(x_unique)
+        ny2d = len(y_unique)
+
+        print(f"2D slice shape inferred from coordinates: ({ny2d}, {nx2d})")
+
+        expected_size = nx2d * ny2d
+
+        if expected_size != len(x_slice):
+            print("Advertencia: el corte no parece ser una malla rectangular.")
+            print("Se usará scatter en lugar de pcolormesh para el corte 2D.")
+
+            use_scatter = True
+
+        else:
+            use_scatter = False
+
+            # Ordenamos primero por y y luego por x para reconstruir la malla 2D
+            sort_idx = np.lexsort((x_slice, y_slice))
+
+            x2d = x_slice[sort_idx].reshape(ny2d, nx2d)
+            y2d = y_slice[sort_idx].reshape(ny2d, nx2d)
+            n2d = n_slice[sort_idx].reshape(ny2d, nx2d)
+            T2d = T_slice[sort_idx].reshape(ny2d, nx2d)
+
+        # Ahora usamos 3 filas:
+        # fila 0: mapas XY
+        # fila 1: perfiles esféricos 3D
+        # fila 2: perfiles en z≈0
+        fig, axes = plt.subplots(3, 2, figsize=(13, 15))
+
+        # ============================================================
+        # Mapas 2D en el plano XY
+        # ============================================================
+
+        # -------------------------
+        # Densidad 2D
+        # -------------------------
+        norm_n = _safe_lognorm(n_slice, floor=1e-12)
+
+        if use_scatter:
+            im1 = axes[0, 0].scatter(
+                x_slice,
+                y_slice,
+                c=n_slice,
+                s=4,
+                norm=norm_n,
+                cmap="viridis",
+            )
+        else:
+            n2d_plot = np.ma.masked_where(n2d <= 0, n2d)
+            im1 = axes[0, 0].pcolormesh(
+                x2d,
+                y2d,
+                n2d_plot,
+                shading="auto",
+                norm=norm_n,
+                cmap="viridis",
+            )
+
+        axes[0, 0].set_xlabel("X [AU]")
+        axes[0, 0].set_ylabel("Y [AU]")
+        axes[0, 0].set_title(r"Density [cm$^{-3}$] — XY slice, $z \approx 0$")
+        axes[0, 0].set_aspect("equal")
+        plt.colorbar(im1, ax=axes[0, 0], label=r"$n_{\rm H_2}$ [cm$^{-3}$]")
+
+        # -------------------------
+        # Temperatura 2D
+        # -------------------------
+        norm_T = _safe_lognorm(T_slice, floor=1.0)
+
+        if use_scatter:
+            im2 = axes[0, 1].scatter(
+                x_slice,
+                y_slice,
+                c=T_slice,
+                s=4,
+                norm=norm_T,
+                cmap="hot",
+            )
+        else:
+            T2d_plot = np.ma.masked_where(T2d <= 0, T2d)
+            im2 = axes[0, 1].pcolormesh(
+                x2d,
+                y2d,
+                T2d_plot,
+                shading="auto",
+                norm=norm_T,
+                cmap="hot",
+            )
+
+        axes[0, 1].set_xlabel("X [AU]")
+        axes[0, 1].set_ylabel("Y [AU]")
+        axes[0, 1].set_title(r"Temperature [K] — XY slice, $z \approx 0$")
+        axes[0, 1].set_aspect("equal")
+        plt.colorbar(im2, ax=axes[0, 1], label="T [K]")
+
+        # ============================================================
+        # Perfiles radiales
+        # ============================================================
+        nbins = 120
+        r_bins = np.linspace(0.0, rmax_plot_au, nbins + 1)
+        r_centers = 0.5 * (r_bins[:-1] + r_bins[1:])
+
+        # ------------------------------------------------------------
+        # 1) Perfiles radiales esféricos 3D
+        #    r = sqrt(x^2 + y^2 + z^2)
+        # ------------------------------------------------------------
+        dens_med_sph = _binned_profile(r_au, n_cm3, r_bins, statistic="median")
+        temp_med_sph = _binned_profile(r_au, T_K, r_bins, statistic="median")
+        vel_med_sph = _binned_profile(r_au, v_kms, r_bins, statistic="median")
+
+        # -------------------------
+        # Densidad esférica 3D
+        # -------------------------
+        ax_sph_dens = axes[1, 0]
+        ax_sph_dens.plot(
+            r_centers,
+            dens_med_sph,
+            lw=2,
+            label="spherical median",
+        )
+
+        if Rdisc_au is not None:
+            ax_sph_dens.axvline(
+                Rdisc_au,
+                color="g",
+                ls="--",
+                alpha=0.8,
+                label=r"$R_{\rm disc}$",
+            )
+
+        if Renv_au is not None:
+            ax_sph_dens.axvline(
+                Renv_au,
+                color="orange",
+                ls="--",
+                alpha=0.8,
+                label=r"$R_{\rm env}$",
+            )
+
+        ax_sph_dens.set_xlabel("Spherical radius [AU]")
+        ax_sph_dens.set_ylabel(r"Density [cm$^{-3}$]")
+        ax_sph_dens.set_yscale("log")
+        ax_sph_dens.set_xlim(0, rmax_plot_au)
+        ax_sph_dens.set_title(r"Spherical radial density profile")
+        ax_sph_dens.grid(True, alpha=0.3)
+        ax_sph_dens.legend()
+
+        # -------------------------
+        # Temperatura y velocidad esféricas 3D
+        # -------------------------
+        ax_sph_tv = axes[1, 1]
+        ax_sph_tv.plot(
+            r_centers,
+            temp_med_sph,
+            lw=2,
+            label="T spherical median [K]",
+        )
+        ax_sph_tv.plot(
+            r_centers,
+            vel_med_sph,
+            lw=2,
+            ls=":",
+            label=r"v spherical median [km s$^{-1}$]",
+        )
+
+        if Rdisc_au is not None:
+            ax_sph_tv.axvline(Rdisc_au, color="g", ls="--", alpha=0.8)
+
+        if Renv_au is not None:
+            ax_sph_tv.axvline(Renv_au, color="orange", ls="--", alpha=0.8)
+
+        ax_sph_tv.set_xlabel("Spherical radius [AU]")
+        ax_sph_tv.set_ylabel("Temperature / Velocity")
+        ax_sph_tv.set_yscale("log")
+        ax_sph_tv.set_xlim(0, rmax_plot_au)
+        ax_sph_tv.set_title(r"Spherical radial temperature and velocity profiles")
+        ax_sph_tv.grid(True, alpha=0.3)
+        ax_sph_tv.legend()
+
+        # ------------------------------------------------------------
+        # 2) Perfiles radiales en el plano medio z≈0
+        #    R = sqrt(x^2 + y^2)
+        # ------------------------------------------------------------
+        dens_med_mid = _binned_profile(r_midplane_au, n_slice, r_bins, statistic="median")
+        temp_med_mid = _binned_profile(r_midplane_au, T_slice, r_bins, statistic="median")
+        vel_med_mid = _binned_profile(r_midplane_au, v_slice_kms, r_bins, statistic="median")
+
+        # -------------------------
+        # Densidad en z≈0
+        # -------------------------
+        ax_mid_dens = axes[2, 0]
+        ax_mid_dens.plot(
+            r_centers,
+            dens_med_mid,
+            lw=2,
+            label=r"midplane median, $z \approx 0$",
+        )
+
+        if Rdisc_au is not None:
+            ax_mid_dens.axvline(
+                Rdisc_au,
+                color="g",
+                ls="--",
+                alpha=0.8,
+                label=r"$R_{\rm disc}$",
+            )
+
+        if Renv_au is not None:
+            ax_mid_dens.axvline(
+                Renv_au,
+                color="orange",
+                ls="--",
+                alpha=0.8,
+                label=r"$R_{\rm env}$",
+            )
+
+        ax_mid_dens.set_xlabel("Cylindrical radius in midplane [AU]")
+        ax_mid_dens.set_ylabel(r"Density [cm$^{-3}$]")
+        ax_mid_dens.set_yscale("log")
+        ax_mid_dens.set_xlim(0, rmax_plot_au)
+        ax_mid_dens.set_title(r"Midplane radial density profile, $z \approx 0$")
+        ax_mid_dens.grid(True, alpha=0.3)
+        ax_mid_dens.legend()
+
+        # -------------------------
+        # Temperatura y velocidad en z≈0
+        # -------------------------
+        ax_mid_tv = axes[2, 1]
+        ax_mid_tv.plot(
+            r_centers,
+            temp_med_mid,
+            lw=2,
+            label=r"T midplane median [K]",
+        )
+        ax_mid_tv.plot(
+            r_centers,
+            vel_med_mid,
+            lw=2,
+            ls=":",
+            label=r"v midplane median [km s$^{-1}$]",
+        )
+
+        if Rdisc_au is not None:
+            ax_mid_tv.axvline(Rdisc_au, color="g", ls="--", alpha=0.8)
+
+        if Renv_au is not None:
+            ax_mid_tv.axvline(Renv_au, color="orange", ls="--", alpha=0.8)
+
+        ax_mid_tv.set_xlabel("Cylindrical radius in midplane [AU]")
+        ax_mid_tv.set_ylabel("Temperature / Velocity")
+        ax_mid_tv.set_yscale("log")
+        ax_mid_tv.set_xlim(0, rmax_plot_au)
+        ax_mid_tv.set_title(r"Midplane radial temperature and velocity profiles, $z \approx 0$")
+        ax_mid_tv.grid(True, alpha=0.3)
+        ax_mid_tv.legend()
+
+        plt.tight_layout()
+
+        diag_name = output_dir / f"ulrichdisk_diagnostics{suffix}.png"
+        plt.savefig(diag_name, dpi=180, bbox_inches="tight")
+
+        if show:
+            plt.show()
+        else:
+            plt.close(fig)
+
+        print(f"Plot guardado como '{diag_name}'")
+
+    else:
+        print("No fue posible construir el corte z≈0")
+
+    # ============================================================
+    # Visualización 3D
+    # ============================================================
+    try:
+        print("Generando visualización 3D...")
+
+        rng = np.random.default_rng(seed)
+
+        weights = n_cm3.copy() ** 2
+        weights[~np.isfinite(weights)] = 0.0
+        weights[weights < 0.0] = 0.0
+
+        positive = weights > 0.0
+
+        if np.sum(positive) == 0:
+            n_points = min(n_random, NPoints)
+            indices = rng.choice(NPoints, size=n_points, replace=False)
+        else:
+            available = np.count_nonzero(positive)
+            n_points = min(n_random, available)
+
+            candidate_indices = np.where(positive)[0]
+            weights_pos = weights[positive]
+            weights_pos = weights_pos / np.sum(weights_pos)
+
+            indices = rng.choice(
+                candidate_indices,
+                size=n_points,
+                replace=False,
+                p=weights_pos,
+            )
+
+        x_plot = x_coords[indices] / u.au
+        y_plot = y_coords[indices] / u.au
+        z_plot = z_coords[indices] / u.au
+        d_plot = n_cm3[indices]
+        t_plot = T_K[indices]
+
+        fig = plt.figure(figsize=(15, 6))
+
+        ax1 = fig.add_subplot(121, projection="3d")
+
+        norm_d3d = _safe_lognorm(d_plot, floor=1e-8)
+
+        sc1 = ax1.scatter(
+            x_plot,
+            y_plot,
+            z_plot,
+            c=d_plot,
+            s=4,
+            alpha=0.6,
+            cmap="viridis",
+            norm=norm_d3d,
+        )
+
+        ax1.set_xlabel("X [AU]")
+        ax1.set_ylabel("Y [AU]")
+        ax1.set_zlabel("Z [AU]")
+        ax1.set_title(r"Density [cm$^{-3}$]")
+        plt.colorbar(sc1, ax=ax1, label=r"$n_{\rm H_2}$ [cm$^{-3}$]")
+
+        ax2 = fig.add_subplot(122, projection="3d")
+
+        norm_t3d = _safe_lognorm(t_plot, floor=1.0)
+
+        sc2 = ax2.scatter(
+            x_plot,
+            y_plot,
+            z_plot,
+            c=t_plot,
+            s=4,
+            alpha=0.6,
+            cmap="hot",
+            norm=norm_t3d,
+        )
+
+        ax2.set_xlabel("X [AU]")
+        ax2.set_ylabel("Y [AU]")
+        ax2.set_zlabel("Z [AU]")
+        ax2.set_title("Temperature [K]")
+        plt.colorbar(sc2, ax=ax2, label="T [K]")
+
+        plt.tight_layout()
+
+        plot3d_name = output_dir / f"ulrichdisk_3d{suffix}.png"
+        plt.savefig(plot3d_name, dpi=180, bbox_inches="tight")
+
+        if show:
+            plt.show()
+        else:
+            plt.close(fig)
+
+        print(f"Visualización 3D guardada como '{plot3d_name}'")
+
+    except Exception as err:
+        print("No fue posible generar la visualización 3D.")
+        print(f"Error: {err}")
+
+        
+def UlrichDisk(discFlag=True, cavity_ang=10 ,envFlag=True, nmodel=0, MStar=24, MRate=5e-4, Rdisc=500, Arho0=5, Renv=2*3423.75, exp_disc=2.25, prop_only=False, molec='ch3oh', molec_abund=1e-5, const_T=300, BT=5, T10Env=3200, diagnostic_plots=True, diagnostic_tag="Main", diagnostic_output_dir=".", p=0.6):
 
     t0 = time.time()
 
@@ -73,9 +634,8 @@ def UlrichDisk(discFlag=True, cavity_ang=10 ,envFlag=True, nmodel=0, MStar=17, M
     #-------------------------------
     MRate = MRate * u.MSun_yr
     RStar = 10*u.RSun * ( MStar/u.MSun )**0.8  #????
-
+    
     #RStar = 26 * u.RSun * ( MStar/u.MSun )**0.27 * ( MRate / (1e-3*u.MSun_yr) )**0.41
-
     #LStar=  1e5*u.Lsun
 
     print('RStar:'.format(RStar))
@@ -94,26 +654,22 @@ def UlrichDisk(discFlag=True, cavity_ang=10 ,envFlag=True, nmodel=0, MStar=17, M
     GRID = Model.grid([sizex, sizey, sizez], [Nx, Ny, Nz], rt_code = 'radmc3d', include_zero = True)
     NPoints = GRID.NPoints #Final number of nodes in the grid
   
-
     #--------
     #DENSITY
     #--------
-    Rho0 = Res.Rho0(MRate, Rd, MStar)
+    Rho0 = Res.Rho0(MRate, Rd, MStar) #Density normalization value. 
     Arho = Arho0 #Disc-envelope density factor
     Renv = Renv * u.au #Envelope radius
     Cavity = cavity_ang * np.pi/180 #Cavity opening angle 
     density = Model.density_Env_Disc(RStar, Rd, Rho0, Arho, GRID, exp_disc=exp_disc, 
                                      discFlag = discFlag, envFlag = envFlag,
                                      renv_max = Renv, ang_cavity = Cavity, 
-                                     average_around_Rd=np.median)
-
+                                     average_around_Rd=np.median, )
 
     #---------------------
     # MODEL TEMPERATURE
     #---------------------
-    T10Env=400
-    BT = 8
-    temperature = Model.temperature(TStar, Rd,T10Env, RStar, MStar, MRate, BT, density, GRID)
+    temperature = Model.temperature(TStar, Rd,T10Env, RStar, MStar, MRate, BT, density, GRID, p=p)
     #temperature=Model.temperature_Constant(density, GRID, discTemp = 2.5*const_T, envTemp = const_T, backTemp = 30.0)
     
     #Whitney et al. exponent is p=0.33 (in Keto & Zhang (2/(4+p)) where p<-1  )
@@ -122,76 +678,10 @@ def UlrichDisk(discFlag=True, cavity_ang=10 ,envFlag=True, nmodel=0, MStar=17, M
     #VELOCITY
     #--------
     vel = Model.velocity(RStar, MStar, Rd, density, GRID)
-    
-    #-----------------------------------------------
-    #3D Points Distribution (weighting with density)
-    #-----------------------------------------------
-    tag = 'Main'
-    dens_plot = density.total / 1e6
 
-    weight = 10*Rho0
-    r = GRID.rRTP[0] / u.au #GRID.rRTP hosts [r, R, Theta, Phi] --> Polar GRID
-    Plot_model.scatter3D(GRID, density.total, weight,
-                     NRand = 4000, colordim = r, axisunit = u.au,
-                     cmap = 'jet', colorscale = 'log',
-                     colorlabel = r'${\rm log}_{10}(r [au])$',
-                     output = '3Dpoints%s.png'%tag, show = False)
-
-#---------------------
-#2D PLOTTING (Density)
-#---------------------
-
-    vmin, vmax = np.array([2e10, 5e19]) / 1e6
-    norm = colors.LogNorm(vmin=vmin, vmax=vmax)
-
-    Plot_model.plane2D(GRID, dens_plot, axisunit = u.au,
-                       cmap = 'jet', plane = {'z': 0*u.au},
-                       norm = norm, colorlabel = r'$[\rm cm^{-3}]$',
-                       output = 'DensMidplane_%s.png'%tag, show = False)
-
-    vmin, vmax = np.array([2e10, 5e19]) / 1e6
-    norm = colors.LogNorm(vmin=vmin, vmax=vmax)
-
-    Plot_model.plane2D(GRID, dens_plot, axisunit = u.au,
-                       cmap = 'jet', plane = {'y': 0*u.au},
-                       norm = norm, colorlabel = r'$[\rm cm^{-3}]$',
-                       output = 'DensVertical_%s.png'%tag, show = False)
-
-    #---------------------
-    #2D PLOTTING (Temp)
-    #---------------------
-
-    vmin, vmax = np.array([5e1, 1e4])
-    norm = colors.LogNorm(vmin=vmin, vmax=vmax)
-
-    Plot_model.plane2D(GRID, temperature.total, axisunit = u.au,
-                       cmap = 'jet', plane = {'z': 0*u.au},
-                       norm = norm, colorlabel = r'[Kelvin]',
-                       output = 'TempMidplane_%s.png'%tag, show = False)
-
-
-    vmin, vmax = np.array([5e1, 1e4])
-    norm = colors.LogNorm(vmin=vmin, vmax=vmax)
-
-    Plot_model.plane2D(GRID, temperature.total, axisunit = u.au,
-                       cmap = 'jet', plane = {'y': 0*u.au},
-                       norm = norm, colorlabel = r'[Kelvin]',
-                       output = 'TempVertical_%s.png'%tag, show = False)
-    
-    #---------------------
-    #2D PLOTTING (Emissivity)
-    #---------------------
-    vmin, vmax = np.array([3e7, 5e12])
-    norm = colors.LogNorm(vmin=vmin, vmax=vmax)
-
-    Plot_model.plane2D(GRID, temperature.total * dens_plot, axisunit = u.au,
-                       cmap = 'ocean_r', plane = {'y': 0*u.au},
-                       norm = norm, colorlabel = r'[$\rho$ T]',
-                       output = 'Emissivity_%s.png'%tag, show = False)
-
-    #**********************
-    #WRITE RADMC-3D FILES
-    #**********************
+#    #**********************
+#    #WRITE RADMC-3D FILES
+#    #**********************
     abundance = molec_abund+np.zeros(GRID.NPoints) #Optimize for the molecule
     gtdratio = Model.gastodust(100., GRID.NPoints)
     microturb = 100+np.zeros(GRID.NPoints)
@@ -203,6 +693,19 @@ def UlrichDisk(discFlag=True, cavity_ang=10 ,envFlag=True, nmodel=0, MStar=17, M
         'gtdratio': gtdratio,
         'microturbulence': microturb,
         'abundance': abundance}
+
+
+    if diagnostic_plots:
+        plot_ulrichdisk_diagnostics(
+            GRID=GRID,
+            prop=prop,
+            density=density,
+            Rdisc_au=Rdisc,
+            Renv_au=Renv / u.au,
+            tag=diagnostic_tag,
+            output_dir=diagnostic_output_dir,
+            show=False
+        )
 
     if prop_only: return GRID, prop, density
     
@@ -540,6 +1043,3 @@ def Hamburguers_piecewise(nmodel=0, MStar=20, MRate=1e-4, discFlag = True, Rdisc
     #-------
     print ('Ellapsed time for iterarion of create_model.py: %.3fs' % (time.time() - t0))
     print ('-------------------------------------------------\n-------------------------------------------------\n')
-
-
-

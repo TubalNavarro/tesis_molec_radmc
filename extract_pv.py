@@ -198,18 +198,11 @@ def compute_residuals(
     pv1_file,
     pv2_file,
     output_file,
-    reference="pv1",
-    floor=None,
 ):
     """
-    Calcula residuos relativos entre dos PV:
+    Calcula residuos absolutos entre dos PV:
 
-        residual = (PV1 - PV2) / reference
-
-    reference puede ser:
-        'pv1'
-        'pv2'
-        'mean'
+        residual = PV1 - PV2
     """
 
     with fits.open(pv1_file) as hdul1, fits.open(pv2_file) as hdul2:
@@ -224,33 +217,15 @@ def compute_residuals(
             f"{pv2_file} tiene {data2.shape}"
         )
 
-    if reference == "pv1":
-        denominator = data1
-    elif reference == "pv2":
-        denominator = data2
-    elif reference == "mean":
-        denominator = 0.5 * (data1 + data2)
-    else:
-        raise ValueError("reference debe ser 'pv1', 'pv2' o 'mean'.")
+    residual = data1 - data2
 
-    residual = np.full_like(data1, np.nan, dtype=float)
-
-    if floor is None:
-        valid = denominator != 0
-    else:
-        valid = np.abs(denominator) >= floor
-
-    residual[valid] = (data1[valid] - data2[valid]) / denominator[valid]
-
-    header["BUNIT"] = "relative"
-    header["HISTORY"] = f"Relative residuals from {pv1_file} and {pv2_file}"
-    header["COMMENT"] = "Residual = (PV1 - PV2) / reference"
+    header["HISTORY"] = f"Absolute residuals from {pv1_file} and {pv2_file}"
+    header["COMMENT"] = "Residual = PV1 - PV2"
 
     fits.writeto(output_file, residual, header, overwrite=True)
 
-    print(f"Residuos relativos guardados en: {output_file}")
+    print(f"Residuos guardados en: {output_file}")
     print(f"Shape: {residual.shape}")
-    print(f"Reference: {reference}")
 
     return residual
 
@@ -259,9 +234,9 @@ def compute_residuals(
 # Parámetros del usuario
 # ============================================================
 
-cube_file = "/home/tubal/repo_tesis/cubes/DIHCA_cubes/shared_data/G335.78/G355.78+0.17_2_subcubefix_head.fits"
+cube_file = "/share/Part1/tubal/maestria/tesis/cubes/DIHCA_cubes/shared_data/G335.78/G355.78+0.17_2_subcubefix_head.fits"
 
-output_file = "/home/tubal/repo_tesis/tesis_molec_radmc/pv/pv_G355.78+0.17_2_freq.fits"
+output_file = "/share/Part1/tubal/maestria/tesis/tesis_molec_radmc/pv/pv_G355.78+0.17_2_freq.fits"
 
 center = SkyCoord(
     "16h29m46.12974s",
