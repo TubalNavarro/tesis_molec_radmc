@@ -198,7 +198,7 @@ def make_line_image_freq(incl=62.5):
 
 
     cube_name='csub_convolved_Jypbeam_header_update.fits'
-    noise_file='../inputs/G328_noise.dat'
+    noise_file='G328_noise.dat'
     output_cube = "csub_convolved_noise.fits"
     random_seed = 42
     noise_per_channel = np.loadtxt(noise_file)
@@ -238,5 +238,14 @@ def make_line_image_freq(incl=62.5):
     )
 
 
-    compute_residuals('../pv/pv_G328_flipped_xy_freq.fits', 'pv.fits', 'pv_residuals.fits')
+    compute_residuals('pv_G328_flipped_xy_freq.fits', 'pv.fits', 'pv_residuals.fits')
+
+        # Leer imagen del modelo teorico
+
+    hdu_model = fits.open('pv.fits')
+    model_data = hdu_model[0].data
+    hdu_model.close()
+    return model_data
+
+    
 

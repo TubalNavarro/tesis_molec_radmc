@@ -17,7 +17,7 @@ from Line_max import analyze_fits_cube
 
 
 # Número de procesos en paralelo
-NPROC = 4
+NPROC = 8
 
 
 cwd = Path(__file__).resolve().parent
@@ -119,7 +119,7 @@ def build_tasks():
             line_kwargs={"incl": incl}
         )
 
-    for r in [200, 300, 400, 500, 600, 1000, 1500]:
+    for r in [400, 500, 600, 700, 800, 1000]:
         add_task(
             tasks,
             f"model_Ulrich_nodisk_rdisc={r}",
@@ -133,7 +133,7 @@ def build_tasks():
             ulrich_kwargs={"Arho0": A, "discFlag": False}
         )
 
-    for M in [9, 15, 18, 20, 22, 24, 27]:
+    for M in [10, 15, 18, 20, 22, 24, 27]:
         add_task(
             tasks,
             f"model_Ulrich_nodisk_MStar={M}",
@@ -187,7 +187,7 @@ def build_tasks():
             line_kwargs={"incl": incl}
         )
 
-    for r in [200, 300, 400, 500, 600, 1000, 1500]:
+    for r in [400, 500, 600,700, 800, 1000]:
         add_task(
             tasks,
             f"model_Ulrich_rdisc={r}",
@@ -208,7 +208,7 @@ def build_tasks():
     #         ulrich_kwargs={"T10Env": T10}
     #     )
 
-    for M in [9, 15, 18, 20, 22, 24, 27]:
+    for M in [10, 15, 18, 20, 22, 24, 27]:
         add_task(
             tasks,
             f"model_Ulrich_MStar={M}",

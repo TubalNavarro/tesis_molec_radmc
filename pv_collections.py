@@ -28,6 +28,8 @@ GROUPS = {
     "MStar": "model_Ulrich_MStar=*",
     "MRate": "model_Ulrich_Mrate=*",
     "T10": "model_Ulrich_T10=*",
+    "Exp": "model_Ulrich_exp=*",
+    "Abund": "model_Ulrich_abund=*",
     "Diagnostic": "model_Ulrich_nodisk_Diagnostic*",
     "nodisc_Rdisc": "model_Ulrich_nodisk_rdisc=*",
     "nodisc_Arho0": "model_Ulrich_nodisk_dens_Arho0=*",
@@ -38,8 +40,8 @@ GROUPS = {
     "nodisc_MRate": "model_Ulrich_nodisk_Mrate=*",
     "nodisc_T10": "model_Ulrich_nodisk_T10=*",
     "nodisc_Diagnostic": "model_Ulrich_nodisk_Diagnostic*",
-    "nodisc_exp": "model_Ulrich_nodisk_exp=*",
-    "exp": "model_Ulrich_exp=*"
+    "nodisc_Exp": "model_Ulrich_nodisk_exp=*",
+    "nodisc_abund": "model_Ulrich_abund=*",
 }
 
 

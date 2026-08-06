@@ -9,6 +9,7 @@ Script that creates possible models of molecular emission for RADMC-3D
 from sf3dmodels import Model, Plot_model
 from sf3dmodels import Resolution as Res
 import sf3dmodels.utils.units as u
+import astropy.units as U
 import sf3dmodels.rt as rt        
 import sf3dmodels.utils.constants as ct            
 
@@ -170,6 +171,16 @@ def plot_ulrichdisk_diagnostics(
     z_coords = np.asarray(GRID.XYZ[2], dtype=float)
 
     NPoints = GRID.NPoints
+    ##############
+    #Cálculo de total gas mass
+    ##############
+    dx,dy,dz = GRID.step
+    dv=dx*dy*dz
+    print("Step in AU=", (dx*U.m).to(U.au))
+    dv=(dv*U.m**3).to(U.cm**3)
+    total_part=np.sum(density.total*dv)/(1e6*U.cm**3) #to cm-3
+    total_mass=(total_part*3.32e-24*U.g).to(U.M_sun)
+    
 
     # En sf3dmodels las coordenadas están en las mismas unidades que u.au.
     # Este script asume que u ya está importado en tu script principal.
@@ -271,6 +282,18 @@ def plot_ulrichdisk_diagnostics(
         # fila 1: perfiles esféricos 3D
         # fila 2: perfiles en z≈0
         fig, axes = plt.subplots(3, 2, figsize=(13, 15))
+
+        mass_text = (
+            rf"Total gas mass: "
+            rf"$M_{{\rm gas}} = {total_mass.to_value(U.M_sun):.3e}\ M_\odot$"
+        )
+
+        fig.suptitle(
+            mass_text,
+            fontsize=14,
+            fontweight="bold",
+            y=0.995,
+        )
 
         # ============================================================
         # Mapas 2D en el plano XY
@@ -596,7 +619,7 @@ def plot_ulrichdisk_diagnostics(
         ax2.set_title("Temperature [K]")
         plt.colorbar(sc2, ax=ax2, label="T [K]")
 
-        plt.tight_layout()
+        plt.tight_layout(rect=[0, 0, 1, 0.97])
 
         plot3d_name = output_dir / f"ulrichdisk_3d{suffix}.png"
         plt.savefig(plot3d_name, dpi=180, bbox_inches="tight")
@@ -613,7 +636,9 @@ def plot_ulrichdisk_diagnostics(
         print(f"Error: {err}")
 
         
-def UlrichDisk(discFlag=True, cavity_ang=10 ,envFlag=True, nmodel=0, MStar=24, MRate=5e-4, Rdisc=500, Arho0=5, Renv=2*3423.75, exp_disc=2.25, prop_only=False, molec='ch3oh', molec_abund=1e-5, const_T=300, BT=5, T10Env=3200, diagnostic_plots=True, diagnostic_tag="Main", diagnostic_output_dir=".", p=0.6):
+def UlrichDisk(nmodel, discFlag=True, cavity_ang=10 ,envFlag=True, MStar=20, MRate=5e-4, Rdisc=600, Arho0=5, Renv=2*3423.75, exp_disc=2.25, prop_only=False, molec='ch3oh', molec_abund=8e-6, BT=5, T10Env=3200, diagnostic_plots=True, diagnostic_tag="Main", diagnostic_output_dir=".", p=0.6):
+
+#cavity = 0
 
     t0 = time.time()
 

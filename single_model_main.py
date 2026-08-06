@@ -11,7 +11,7 @@ cwd = Path.cwd().resolve()
 from Line_max import analyze_fits_cube
 
 
-def organize_folder(modelname, molec='co'):
+def organize_folder(modelname, molec='ch3oh'):
 
     if os.getcwd().endswith('%s'%(cwd)):
         pass
@@ -35,6 +35,15 @@ def organize_folder(modelname, molec='co'):
         'inputs/partitionfunction_%s.inp'%molec,
         '%s/partitionfunction_%s.inp'%(modelname, molec)
     )
+    shutil.copy2(
+        root_dir / 'inputs' / 'G328_noise.dat',
+        model_dir / 'G328_noise.dat'
+    )
+    
+    shutil.copy2(
+        root_dir / 'pv' / 'pv_G328_flipped_xy_freq.fits',
+        model_dir / 'pv_G328_flipped_xy_freq.fits'
+    )
     os.chdir(modelname)
     
 
@@ -45,7 +54,7 @@ def par_tests():
         UlrichDisk(discFlag=False)
         make_line_image_freq(incl=incl)
 
-    for r in [200, 300, 400, 500, 600, 1000, 1500]:
+    for r in [400, 450, 500, 550, 600, 800, 900, 1000]:
         organize_folder(f'model_Ulrich_nodisk_rdisc={r}', molec='ch3oh')
         UlrichDisk(Rdisc=r, discFlag=False)
         make_line_image_freq()    
@@ -55,7 +64,7 @@ def par_tests():
         make_line_image_freq()  
 
 
-    for M in [9,15,18,20,22,24,27]:
+    for M in [10, 12, 14, 16, 18,20,22,24,26]:
         organize_folder(f'model_Ulrich_nodisk_MStar={M}', molec='ch3oh')
         UlrichDisk(MStar=M, discFlag=False)
         make_line_image_freq() 
@@ -125,6 +134,6 @@ def par_tests():
 #par_tests()
 
 ###### Un solo modelo, parámetros default#######
-#organize_folder(f'model_Ulrich_test')
-#UlrichDisk()
-#make_line_image_freq()
+organize_folder(f'model_Ulrich_test')
+UlrichDisk(nmodel=0)
+make_line_image_freq()
