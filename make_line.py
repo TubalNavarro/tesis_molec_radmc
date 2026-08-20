@@ -18,8 +18,7 @@ import shutil
 import subprocess
 
 import sys
-#sys.path.append('./')
-#import image_mod
+
 
 from argparse import ArgumentParser
 

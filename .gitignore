@@ -175,8 +175,13 @@ cython_debug/
 
 #model folders
 model*/
+mcmc_models*/
 
 #PV diagrams .png folders
 pv_collections*/
 
+#logs
+mcmc_test*.log
+
 README.md
+make_line.py

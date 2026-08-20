@@ -689,7 +689,7 @@ def UlrichDisk(nmodel, discFlag=True, cavity_ang=10 ,envFlag=True, MStar=20, MRa
     density = Model.density_Env_Disc(RStar, Rd, Rho0, Arho, GRID, exp_disc=exp_disc, 
                                      discFlag = discFlag, envFlag = envFlag,
                                      renv_max = Renv, ang_cavity = Cavity, 
-                                     average_around_Rd=np.median, )
+                                     average_around_Rd=np.median, rho_min_env=1e13)
 
     #---------------------
     # MODEL TEMPERATURE
@@ -737,7 +737,8 @@ def UlrichDisk(nmodel, discFlag=True, cavity_ang=10 ,envFlag=True, MStar=20, MRa
     radmc = rt.Radmc3d(GRID)
     wavelength_intervals = [1e-1,5e2,1e4] #[5e-3, 5e1, 1e4]
     wavelength_divisions = [20,20] 
-    radmc.write_radmc3d_control(nphot=100000000, incl_dust=1, setthreads=8, incl_freefree=0, tgas_eq_tdust=0, modified_random_walk=0)
+    radmc.write_radmc3d_control(nphot=100000000, incl_dust=1, setthreads=1, incl_freefree=0, tgas_eq_tdust=0, modified_random_walk=0)
+    #Threads=1 is the default for ray-traycing, >1 is useful for paralelized MCTherm
     radmc.write_amr_grid()
     radmc.write_dust_density(prop['dens_dust']) #Mass density
     radmc.write_dust_temperature(prop['temp_dust']) #Spherical radial plaw temperature produces artifacts near the disc outer radius in the line images

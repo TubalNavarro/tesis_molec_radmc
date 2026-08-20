@@ -41,9 +41,23 @@ root_dir = Path(__file__).resolve().parent
 
 ######function that creates a new folder for each model and imports necessary inputs
 
+#***************
+#EMCEE ARGUMENTS
+#***************
+nthreads = 16 #if None use max num of threads
+nwalkers = 32 #Number of different models invoked by emcee, these will evolve over nsteps 
+nburn=1
+nsteps = 100
+tag_out = 'mcmc_G328'
+frac_stddev = 1e-2
+n_test=14
+#frac_stddev is the fraction of parameter range to calculate stddev of the initial seed of parameters,
+# e.g. sigma0_parA = frac_stddev*(bound1_parA-bound0_parA)
+
+
 def organize_folder(modelname, molec='ch3oh'):
 
-    model_dir = root_dir / 'mcmc_models' / modelname
+    model_dir = root_dir / f'mcmc_models_test{n_test}' / modelname
 
     model_dir.mkdir(
         parents=True,
@@ -82,16 +96,6 @@ def organize_folder(modelname, molec='ch3oh'):
 
     return model_dir
 
-#***************
-#EMCEE ARGUMENTS
-#***************
-nthreads = None #if None use max num of threads
-nwalkers = 32 #Number of different models invoked by emcee, these will evolve over nsteps 
-nsteps = 10
-tag_out = 'mcmc_G328'
-frac_stddev = 1e-2 
-#frac_stddev is the fraction of parameter range to calculate stddev of the initial seed of parameters,
-# e.g. sigma0_parA = frac_stddev*(bound1_parA-bound0_parA)
 
 #*******************
 #INIT PARS FOR EMCEE
@@ -110,7 +114,7 @@ param_min = free['Min'].to_numpy()
 param_max = free['Max'].to_numpy()
 fixed_params = fixed['Mean'].to_dict()
 
-noise = 1.5e-3 #
+noise = 5e-3 #
 npars = len(param_names)
 p0_stddev = frac_stddev * (param_max - param_min)
 p0 = np.random.normal(p0_mean, p0_stddev, size=(nwalkers, npars))
@@ -135,22 +139,50 @@ def analyse_samples(sampler, nstats=None, make_walkers=True, make_corner=True):
     samples = samples.reshape(-1, samples.shape[-1]) #reshape samples to nwalkers*nsteps, npars
     best_params = np.median(samples, axis=0)
     errneg, errpos = error_samples(samples, best_params)
-    np.savetxt(f'log_pars_{tag_out}_cube_{nwalkers}walkers_{nsteps}steps.txt',
+    np.savetxt(f'test{n_test}_log_pars_{tag_out}_cube_{nwalkers}walkers_{nsteps}steps.txt',
                np.array([p0_mean, best_params, errneg, errpos], dtype='object'),
                fmt='%.8f', header=str(param_names))
-    np.savetxt(f'parameter_samples_{tag_out}_cube_{nwalkers}walkers_{nsteps}steps.txt', 
+    np.savetxt(f'test{n_test}_parameter_samples_{tag_out}_cube_{nwalkers}walkers_{nsteps}steps.txt', 
                samples,
                fmt='%.8f', header=str(param_names))
 
     if make_walkers: 
         plot_walkers(sampler.chain.T, best_params, header=param_names)
         plt.tight_layout()
-        plt.savefig(f'mc_walkers_{tag_out}_{nwalkers}walkers_{nsteps}steps.png', dpi=300)
+        plt.savefig(f'test{n_test}_mc_walkers_{tag_out}_{nwalkers}walkers_{nsteps}steps.png', dpi=300)
         plt.close()
     if make_corner:
         plot_corner(samples, labels=param_names)
-        plt.savefig(f'mc_corner_{tag_out}_{nwalkers}walkers_{nsteps}steps.png', dpi=300)
+        plt.savefig(f'test{n_test}_mc_corner_{tag_out}_{nwalkers}walkers_{nsteps}steps.png', dpi=300)
         plt.close()
+
+def clean_model_folder(model_dir):
+    # Borrar todos los .inp
+    for file in model_dir.glob('*.inp'):
+        file.unlink()
+    for file in model_dir.glob('raw_radmc*'):
+        file.unlink()
+    for file in model_dir.glob('radmc_*'):
+        file.unlink()
+    for file in model_dir.glob('_convolved*.fits'):
+        file.unlink()
+    for file in model_dir.glob('csub_convolved_J*.fits'):
+        file.unlink()
+    for file in model_dir.glob('cont*.fits'):
+        file.unlink()
+    # Borrar archivos específicos
+    files_to_delete = [
+        'image_line.out',
+        'dust_temperature.dat',
+        'G328.dat',
+        'radmc3d.out'
+    ]
+
+    for filename in files_to_delete:
+        file = model_dir / filename
+        if file.exists():
+            file.unlink()
+
 
 #***********************
 #READ DATA AND SET PATHS
@@ -197,23 +229,36 @@ def ln_likelihood(params):
     finally:
         os.chdir(root_dir)
 
-    lnx2 =  -0.5*np.sum(np.power((data - pv_model)/noise, 2))        
+    lnx2 = -0.5 * np.sum(((data - pv_model) / noise)**2)
+    
     with open(model_dir / 'likelihood.txt', 'w') as f:
         f.write(f'ln_likelihood = {lnx2}\n')
+    
+    clean_model_folder(model_dir)
+    
     return lnx2 if np.isfinite(lnx2) else -np.inf
 
 
-def run_mcmc(p0, nwalkers, nsteps, npars, nthreads=None, **kwargs):
+def run_mcmc(p0, nwalkers, nburn, nsteps, npars, nthreads=None):
     with Pool(processes=nthreads) as pool:
-        sampler = emcee.EnsembleSampler(nwalkers, npars, ln_likelihood, pool=pool, kwargs=kwargs)
+        sampler = emcee.EnsembleSampler(
+            nwalkers, npars, ln_likelihood, pool=pool
+        )
+
+        #print(f"\nRunning burn-in: {nburn} steps")
+        #start = time.time()
+        #state = sampler.run_mcmc(p0, nburn, progress=True)
+        #print(f"Burn-in took {time.time() - start:.1f} seconds")
+
+        #sampler.reset()
+
+        print(f"\nRunning production: {nsteps} steps")
         start = time.time()
         sampler.run_mcmc(p0, nsteps, progress=True)
-        end = time.time()
-        multi_time = end - start
-        print("Multiprocessing took {0:.1f} seconds".format(multi_time))
+        print(f"Production took {time.time() - start:.1f} seconds")
+
     return sampler
 
-
 if __name__ == '__main__':
-    sampler = run_mcmc(p0, nwalkers, nsteps, npars, nthreads=nthreads)
+    sampler = run_mcmc(p0, nwalkers,nburn, nsteps, npars, nthreads=nthreads)
     analyse_samples(sampler)

@@ -1,6 +1,6 @@
 Parameter,  Mean,   Min,    Max,    Fit
-MStar,      20,     10,      40,    True
-MRate,      2e-3,   5e-4,   4e-3,   True
+MStar,      17,     10,      40,    True
+MRate,      9e-4,   5e-4,   4e-3,   True
 Rdisc,      150,    150,    150,    False
 Arho0,      1,      1,      1,      False
 Renv,       5000,   5000,   5000,   False
