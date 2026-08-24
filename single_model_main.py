@@ -1,72 +1,177 @@
-#Script que corre distintos modelos, variando parámetros.
+"""
+Run individual Ulrich models or vary one parameter at a time.
+"""
 
-from yso_models import *
-from make_line import *
-from pathlib import Path 
+import os
+import json
 import shutil
-import subprocess
-import sys
+from pathlib import Path
 
-cwd = Path.cwd().resolve()
+from yso_models import UlrichDisk
+from make_line import make_line_image_freq
+from config import load_config
+
+
+
 root_dir = Path(__file__).resolve().parent
 
-def organize_folder(modelname, molec='ch3oh'):
+config_file = root_dir / "configs" / "G328.json"
+config = load_config(config_file)
 
-    if os.getcwd().endswith('%s'%(cwd)):
-        pass
-    else:
-        os.chdir('%s'%(cwd))
 
-    os.makedirs('%s'%(modelname), exist_ok=True)
-    model_dir=Path('%s'%(modelname))
-    shutil.copy(
-        'inputs/dustkappa_silicate.inp',
-        '%s/dustkappa_silicate.inp'%(modelname)
-    )
-    shutil.copy(
-        'inputs/molecule_%s.inp'%molec,
-        '%s/molecule_%s.inp'%(modelname, molec)
-    )
-    shutil.copy(
-        'make_line.py',
-        '%s/make_line.py'%(modelname)
-    )
-    shutil.copy(
-        'inputs/partitionfunction_%s.inp'%molec,
-        '%s/partitionfunction_%s.inp'%(modelname, molec)
-    )
-    shutil.copy2(
-        root_dir / 'inputs' / 'G328_noise.dat',
-        model_dir / 'G328_noise.dat'
-    )
-    
-    shutil.copy2(
-        root_dir / 'pv' / 'pv_G328_flipped_xy_freq.fits',
-        model_dir / 'pv_G328_flipped_xy_freq.fits'
-    )
-    os.chdir(modelname)
-    
 
-import json
+def read_pars_json(filename):
 
-def read_pars_json(filename="parameters.json"):
+    filename = Path(filename)
+
+    if not filename.is_absolute():
+        filename = root_dir / filename
+
     with open(filename, "r") as f:
         params = json.load(f)
+
     return params
 
-def par_tests():
-    params=read_pars_json("various_files/parameters.json")
-    params.pop("incl")
-    for incl in [0, 5, 10, 20, 30, 40, 45, 50, 60 , 70, 80, 85, 90]:
-        organize_folder(f'model_Ulrich_i={incl}')
-        UlrichDisk(nmodel=0, **params)      
-        make_line_image_freq(incl=incl)
+
+
+def organize_folder(modelname, config):
+
+    molec = config["line"]["molecule"]
+
+    model_dir = root_dir / modelname
+
+    model_dir.mkdir(
+        parents=True,
+        exist_ok=False
+    )
+
+    shutil.copy2(
+        root_dir / "inputs" / "dustkappa_silicate.inp",
+        model_dir / "dustkappa_silicate.inp"
+    )
+
+    shutil.copy2(
+        root_dir / "inputs" / f"molecule_{molec}.inp",
+        model_dir / f"molecule_{molec}.inp"
+    )
+
+    shutil.copy2(
+        root_dir / "inputs" / f"partitionfunction_{molec}.inp",
+        model_dir / f"partitionfunction_{molec}.inp"
+    )
+
+    noise_file = (
+        root_dir / "inputs" / config["observation"]["noise_file"]
+    )
+
+    shutil.copy2(
+        noise_file,
+        model_dir / noise_file.name
+    )
+
+    pv_file = (
+        root_dir/ "pv" / config["observation"]["pv_file"]
+    )
+
+    shutil.copy2(
+        pv_file,
+        model_dir / pv_file.name
+    )
+
+    return model_dir
+
+
+def run_model(modelname, params, config):
+
+    params = params.copy()
+
+    incl = params.pop("incl")
+
+    model_dir = organize_folder(
+        modelname=modelname,
+        config=config
+    )
+
+    try:
+
+        os.chdir(model_dir)
+
+        print("\n===================================")
+        print(f"Running model: {modelname}")
+        print(f"Inclination: {incl}")
+        print("===================================\n")
+
+        UlrichDisk(
+            nmodel=modelname,
+
+            molec=config["line"]["molecule"],
+
+            grid_config=config["physical_grid"],
+            model_config=config["model_options"],
+            radmc_config=config["radmc3d"],
+
+            **params
+        )
+
+        pv_model = make_line_image_freq(
+            incl=incl,
+            config=config
+        )
+
+    finally:
+
+        os.chdir(root_dir)
+
+    return pv_model
 
 
 
-###### Un solo modelo, parámetros default#######
-organize_folder(f'model_Ulrich_test_2')
-params=read_pars_json("../various_files/test_pars.json")
-incl = params.pop("incl")
-UlrichDisk(nmodel=0, **params)
-make_line_image_freq(62.5)
+def single_model(
+    params_file="various_files/test_pars.json",
+    modelname="model_Ulrich_test"
+):
+
+    params = read_pars_json(
+        params_file
+    )
+
+    return run_model(
+        modelname=modelname,
+        params=params,
+        config=config
+    )
+
+
+
+def parameter_test(
+    parameter,
+    values,
+    params_file="various_files/parameters.json"
+):
+
+    base_params = read_pars_json(
+        params_file
+    )
+
+    for value in values:
+
+        params = base_params.copy()
+
+        params[parameter] = value
+
+        modelname = (
+            f"model_Ulrich_"
+            f"{parameter}={value:g}"
+        )
+
+        run_model(
+            modelname=modelname,
+            params=params,
+            config=config
+        )
+
+
+if __name__ == "__main__":
+
+    single_model()
+    # parameter_test( "incl", [0, 5, 10, 20, 30, 40, 45, 50, 60, 70, 80, 85, 90])

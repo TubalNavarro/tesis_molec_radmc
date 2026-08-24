@@ -5,7 +5,7 @@ Rdisc,      150,    150,    150,    False
 Arho0,      1,      1,      1,      False
 Renv,       5000,   5000,   5000,   False
 cavity_ang, 0,      0,      0,      False
-incl,       62.5,   62.5,   52.5,   False
+incl,       62.5,   62.5,   62.5,   False
 exp_disc,   2.25,   2.25,   2.25,   False
 BT,         1,      1,      1,      False
 T10Env,     3200,   3200,   3200,   False

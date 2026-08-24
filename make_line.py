@@ -8,11 +8,12 @@ from discminer.core import Cube
 from radio_beam import Beam
 from astropy.coordinates import SpectralCoord
 from spectral_cube import SpectralCube
+from pathlib import Path as FilePath
 import sys
 sys.path.append('/Users/migueljaquez/Estudiantes/Tubal/repo_tesis-main/radmc3d-2.0/python/radmc3dPy')
 import radmc3dPy.image as image
 from astropy.coordinates import SkyCoord
-from extract_pv import *
+from extract_pv import make_pv_diagram, compute_residuals
 import os
 import shutil
 import subprocess
@@ -20,60 +21,54 @@ import subprocess
 import sys
 
 
-from argparse import ArgumentParser
 
 # make a line observations and output in frequency units as a real observation.
-def make_line_image_freq(incl=62.5):
-    parser = ArgumentParser(prog='Make line images from sf3d model', description='Make line images and readable fits cube')
+def make_line_image_freq(incl, config):
+
+    # ==========================
+    # CONFIGURATION LOAD
+    # ==========================
+
+    source_cfg = config["source"]
+    line_cfg = config["line"]
+    image_cfg = config["synthetic_image"]
+    beam_cfg = config["beam"]
+    pv_cfg = config["pv"]
+    obs_cfg = config["observation"]
+
+    # Source
+    dpc = source_cfg["distance_pc"]
+    ra = source_cfg["ra"]
+    dec = source_cfg["dec"]
+    coord = f"{ra} {dec}"
+    v_sys = source_cfg["v_sys_kms"]
+
+    # Molecular line
+    restfreq = line_cfg["restfreq_hz"]
+    linefreq = line_cfg["linefreq_hz"]
+    transition = line_cfg["transition"]
+
+    # Synthetic image
+    nx = image_cfg["npix"]
+    nchan = image_cfg["nchan"]
+    dv = image_cfg["dv_kms"]
+    pixel_scale = image_cfg["pixel_scale_arcsec"]
+
+    # Beam
+    bmaj = beam_cfg["major_arcsec"]
+    bmin = beam_cfg["minor_arcsec"]
+    bpa = beam_cfg["pa_deg"]
+
+    # PV
+    pv_pa = pv_cfg["pa_deg"]
+    pv_length = pv_cfg["length_arcsec"]
+    pv_width = pv_cfg["width_arcsec"]
+    pv_spacing = pv_cfg["spacing_arcsec"]
+
+    sizeau = nx * pixel_scale * dpc
+    print(f"Synthetic image size = {sizeau:.2f} au")
+    print(f"Pixel scale = {pixel_scale:.5f} arcsec/pixel")
     
-    ### RADMC simulation options 
-
-     # Cube rest. frec. 233.7722702480E9  
-
-    parser.add_argument('-restfreq', '--restfreq', default=335.582017e9, type=float,  
-                        help="Rest frequency of the cube. DEFAULTS to  223.72571493e9 Hz") # jaquez
-    parser.add_argument('-linefreq', '--linefreq', default=335.582017e9, type=float,  
-                        help="Line frequency of the cube. DEFAULTS to  223.795666 Hz") # jaquez
-    parser.add_argument('-v_sys', '--v_sys', default=-43.5, type=float,
-                        help='Systemic velocity of the source in km/s. DEFAULTS TO 0.'  )
-    parser.add_argument('-nchan', '--nchan', default=56, type=int,
-                        help="Number of velocity channels to be computed. DEFAULTS to 101.")
-    parser.add_argument('-dv', '--dv', default=0.436180476698, type=float,   
-                        help="Delta velocity channel, line images will range from -dv*nchan/2 to dv*nchan/2 centered in restfreq. DEFAULTS to 5.0 km/s.") #Jaquez
-    parser.add_argument('-sizeau', '--sizeau', default=6847.5, type=float,
-                        help="Maximum sky window extent in au. DEFAULTS to 1200 au.")
-    parser.add_argument('-nx', '--nx', default=249, type=int, 
-                        help="Number of pixels per spatial dimension. DEFAULTS to 264")
-    parser.add_argument('-incl', '--incl', default=incl, type=float,
-                        help="Disc inclination. DEFAULTS to 50.32 deg.")
-    parser.add_argument('-dpc', '--dpc', default=2500, type=float,
-                        help="Distance to source in pc. DEFAULTS to 100 pc.")
-    parser.add_argument('-radmc3d', '--radmc3d', default=1, type=int,
-                        help="Run radmc3d? DEFAULTS to 0.")
-
-    #convolution image options
-    parser.add_argument('-c', '--convolve', action="store_false", 
-                        help="Convolve datacube with beam.")
-    parser.add_argument('-bmaj', '--bmaj', default=0.073, type=float,
-                        help="Beam major axis. DEFAULTS to 0.05 arcsec.")
-    parser.add_argument('-bmin', '--bmin', default=0.055, type=float,
-                        help="Beam minor axis. DEFAULTS to 0.05 arcsec.")
-    parser.add_argument('-bpa', '--bpa', default=54.4, type=float,
-                        help="Beam position angle. DEFAULTS to 0.0 deg.")
-    parser.add_argument("--add_noise", action="store_true", help="add gaussian noise to the cube") #jaquez
-    parser.add_argument("--noise_std", default=1e-3, type=float, help="noise standard deviation") #jaquez
-
-    # add a wcs 
-
-    parser.add_argument('-coord','--coord', default='15h57m59.799s -53d58m00.528s', type=str, 
-                        help='Coordinates of the object in the sky.' ) 
-    parser.add_argument('-fi', '--fileimage', default='image_line.out', type=str,
-                        help="Output image file name. DEFAULTS to 'image_line.out'.")
-    parser.add_argument('-fc', '--filecube', default='cube.fits', type=str,
-                        help="Output fits file. DEFAULTS to 'cube.fits'.")
-    parser.add_argument('-transition', '--transition', default=1, type=int, help="Number of line transition in molecule.inp file"  )
-    args = parser.parse_args()
-
     #************************
     #PATHS AND WORKING FOLDER
     #************************
@@ -81,28 +76,27 @@ def make_line_image_freq(incl=62.5):
     workdir = './'
     fileimage = 'image_line.out'
 
-    sc_center = SpectralCoord(args.restfreq*u.Hz, doppler_rest=args.restfreq*u.Hz, doppler_convention='radio') # is zero for now #Jaquez usfull if we want to observe thinks with high velocities    
-    line_center = SpectralCoord(args.linefreq*u.Hz, doppler_rest=args.restfreq*u.Hz, doppler_convention='radio') # is zero for now #Jaquez usfull if we want to observe thinks with high velocities 
-    line_center = line_center.with_radial_velocity_shift((args.v_sys)*(u.km/u.s)) 
+    sc_center = SpectralCoord(restfreq*u.Hz, doppler_rest=restfreq*u.Hz, doppler_convention='radio') # is zero for now #Jaquez usfull if we want to observe thinks with high velocities    
+    line_center = SpectralCoord(linefreq*u.Hz, doppler_rest=restfreq*u.Hz, doppler_convention='radio') # is zero for now #Jaquez usfull if we want to observe thinks with high velocities 
+    line_center = line_center.with_radial_velocity_shift((v_sys)*(u.km/u.s)) 
     
-    dv_half = (args.dv*args.nchan)/2   
+    dv_half = (dv*nchan)/2   
     nu_min = line_center.with_radial_velocity_shift((-dv_half)*(u.km/u.s)) 
     nu_max = line_center.with_radial_velocity_shift((dv_half)*(u.km/u.s))  
     
-    print(f"Central frequency = {args.restfreq:.6f}")
+    print(f"Central frequency = {restfreq:.6f}")
     print(f'sc_center = {sc_center}')
     print(f'The cube frequency range is from {nu_min} to {nu_max}')
     
     #**************
     #RUN RADMC3D
     #**************
-    if args.radmc3d: 
 
-        subprocess.run('%s image iline  %d widthkms %.5f linenlam %d npix %d sizeau %.1f incl %.1f'%(radmc3d, args.transition ,dv_half, args.nchan, args.nx, args.sizeau, args.incl), shell=True) 
-        shutil.move('image.out', workdir+args.fileimage) 
+    subprocess.run('%s image iline  %d widthkms %.5f linenlam %d npix %d sizeau %.1f incl %.1f'%(radmc3d, transition ,dv_half, nchan, nx, sizeau, incl), shell=True, check=True) 
+    shutil.move('image.out', workdir+fileimage) 
 
     im = image.readImage(workdir+fileimage) #shape: (nrows, ncols, nchan)
-    im.writeFits(fname=workdir+"radmc_output"+fileimage.replace(".out",".fits"),dpc=args.dpc, coord=args.coord,) 
+    im.writeFits(fname=workdir+"radmc_output"+fileimage.replace(".out",".fits"),dpc=dpc, coord=coord,) 
     
     # a partir del header de salida de radmc vamos a generar el header 
     hdul = fits.open(workdir+"radmc_output"+fileimage.replace(".out",".fits")) 
@@ -116,7 +110,7 @@ def make_line_image_freq(incl=62.5):
     hd_mod['CTYPE3'] = 'FREQ'
     hd_mod['SPECSYS'] = 'LSRK    '
     hd_mod['VELREF']  = 257 
-    hd_mod['RESTFRQ'] = args.restfreq
+    hd_mod['RESTFRQ'] = restfreq
     hd_mod['BUNIT'] = 'Jy/pixel'
     hd_mod['CUNIT3'] = 'Hz'
     hd_mod['CRVAL3'] = nu_min.value
@@ -162,9 +156,9 @@ def make_line_image_freq(incl=62.5):
         cube_ = syn_cube.with_beam(point_beam) # queda en unidades de Jy.pix-1
     
         new_beam = Beam(
-            major= args.bmaj * u.arcsec,
-            minor=args.bmin * u.arcsec,
-            pa=args.bpa * u.deg
+            major= bmaj * u.arcsec,
+            minor=bmin * u.arcsec,
+            pa=bpa * u.deg
         )
     
         conv_synth_cube = cube_.convolve_to(new_beam)
@@ -197,7 +191,7 @@ def make_line_image_freq(incl=62.5):
 
 
     cube_name='csub_convolved_Jypbeam_header_update.fits'
-    noise_file='G328_noise.dat'
+    noise_file = FilePath(obs_cfg["noise_file"]).name
     output_cube = "csub_convolved_noise.fits"
     random_seed = 42
     noise_per_channel = np.loadtxt(noise_file)
@@ -220,25 +214,20 @@ def make_line_image_freq(incl=62.5):
 ##########MAKE PV################
 
 
-    center = SkyCoord(
-        "15h57m59.799s",
-        "-53d58m00.528s",
-        frame="icrs"
-    )
+    center = SkyCoord(ra, dec, frame="icrs")
 
     make_pv_diagram(cube_file=output_cube,
         output_file='pv.fits',
         center_coord=center,
-        pa_deg=90,
-        length_arcsec=2.7,
-        width_arcsec=0.0550,
-        spacing_arcsec=0.0110,
-        restfreq_GHz=args.linefreq*1e-9,
+        pa_deg=pv_pa,
+        length_arcsec=pv_length,
+        width_arcsec=pv_width,
+        spacing_arcsec=pv_spacing,
+        restfreq_GHz=linefreq*1e-9,
     )
 
-
-    compute_residuals('pv_G328_flipped_xy_freq.fits', 'pv.fits', 'pv_residuals.fits')
-
+    observed_pv_file = FilePath(obs_cfg["pv_file"]).name
+    compute_residuals(observed_pv_file, 'pv.fits','pv_residuals.fits')
         # Leer imagen del modelo teorico
 
     hdu_model = fits.open('pv.fits')
@@ -247,4 +236,3 @@ def make_line_image_freq(incl=62.5):
     return model_data
 
     
-

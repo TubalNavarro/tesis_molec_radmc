@@ -2,11 +2,30 @@
 Master script for RL modelling of G328
 Ulrich+disk model that uses ulrichdisk_cont and ulrichdisk_pv
 '''
+
 import os
+import json
+from pathlib import Path
+from config import load_config
+from argparse import ArgumentParser
+root_dir = Path(__file__).resolve().parent
+
+parser = ArgumentParser()
+parser.add_argument( "config", nargs="?", default="configs/G328.json", help="Project configuration JSON file")
+args = parser.parse_args()
+config_file = Path(args.config)
+
+if not config_file.is_absolute():
+    config_file = root_dir / config_file
+config = load_config(config_file)
+
+
+os.environ["OMP_NUM_THREADS"] = str(
+    config["mcmc"]["omp_threads"]
+)
+
+
 import uuid
-os.environ["OMP_NUM_THREADS"] = "2"
-
-
 #***************
 #Main libraries
 #***************
@@ -27,37 +46,33 @@ from multiprocessing import Pool, Process
 #*******************
 #Addtional libraries
 #*******************
-from argparse import ArgumentParser
 from astropy.io import fits
 import numpy as np
 import time
 import sys
-import json
 
-from pathlib import Path
 import shutil
-
-root_dir = Path(__file__).resolve().parent
-
-######function that creates a new folder for each model and imports necessary inputs
 
 #***************
 #EMCEE ARGUMENTS
 #***************
-nthreads = 16 #if None use max num of threads
-nwalkers = 32 #Number of different models invoked by emcee, these will evolve over nsteps 
-nburn=1
-nsteps = 100
-tag_out = 'mcmc_G328'
-frac_stddev = 1e-2
-n_test=14
-#frac_stddev is the fraction of parameter range to calculate stddev of the initial seed of parameters,
-# e.g. sigma0_parA = frac_stddev*(bound1_parA-bound0_parA)
+mcmc_config = config["mcmc"]
+output_config = config["output"]
 
+nthreads = mcmc_config["nthreads"]
+nwalkers = mcmc_config["nwalkers"]
+nburn = mcmc_config["nburn"]
+nsteps = mcmc_config["nsteps"]
+frac_stddev = mcmc_config["frac_stddev"]
 
-def organize_folder(modelname, molec='ch3oh'):
+tag_out = output_config["tag"]
+test_tag = output_config["test_tag"]
 
-    model_dir = root_dir / f'mcmc_models_test{n_test}' / modelname
+######function that creates a new folder for each model and imports necessary inputs
+
+def organize_folder(modelname, molec=config["line"]["molecule"]):
+
+    model_dir = root_dir / f'{tag_out}_test{test_tag}_{nwalkers}walkers_{nsteps}steps' / modelname
 
     model_dir.mkdir(
         parents=True,
@@ -85,13 +100,13 @@ def organize_folder(modelname, molec='ch3oh'):
     )
 
     shutil.copy2(
-        root_dir / 'inputs' / 'G328_noise.dat',
-        model_dir / 'G328_noise.dat'
+        root_dir / "inputs" /config["observation"]["noise_file"],
+        model_dir / config["observation"]["noise_file"]
     )
 
     shutil.copy2(
-        root_dir / 'pv' / 'pv_G328_flipped_xy_freq.fits',
-        model_dir / 'pv_G328_flipped_xy_freq.fits'
+        root_dir / "pv" /config["observation"]["pv_file"],
+        model_dir / config["observation"]["pv_file"]
     )
 
     return model_dir
@@ -102,7 +117,11 @@ def organize_folder(modelname, molec='ch3oh'):
 #*******************
 # Read CSV file with parameter space
 
-param_space = pd.read_csv(root_dir / 'free_params_ulrich.csv', skipinitialspace=True)
+parameter_file = root_dir / config["mcmc"]["parameter_file"]
+param_space = pd.read_csv(
+    parameter_file,
+    skipinitialspace=True
+)
 param_space.set_index('Parameter', inplace=True)
 
 free = param_space[param_space['Fit']]
@@ -114,7 +133,7 @@ param_min = free['Min'].to_numpy()
 param_max = free['Max'].to_numpy()
 fixed_params = fixed['Mean'].to_dict()
 
-noise = 5e-3 #
+mcmc_noise = mcmc_config["noise"] #
 npars = len(param_names)
 p0_stddev = frac_stddev * (param_max - param_min)
 p0 = np.random.normal(p0_mean, p0_stddev, size=(nwalkers, npars))
@@ -139,21 +158,21 @@ def analyse_samples(sampler, nstats=None, make_walkers=True, make_corner=True):
     samples = samples.reshape(-1, samples.shape[-1]) #reshape samples to nwalkers*nsteps, npars
     best_params = np.median(samples, axis=0)
     errneg, errpos = error_samples(samples, best_params)
-    np.savetxt(f'test{n_test}_log_pars_{tag_out}_cube_{nwalkers}walkers_{nsteps}steps.txt',
+    np.savetxt(f'test{test_tag}_log_pars_{tag_out}_cube_{nwalkers}walkers_{nsteps}steps.txt',
                np.array([p0_mean, best_params, errneg, errpos], dtype='object'),
                fmt='%.8f', header=str(param_names))
-    np.savetxt(f'test{n_test}_parameter_samples_{tag_out}_cube_{nwalkers}walkers_{nsteps}steps.txt', 
+    np.savetxt(f'test{test_tag}_parameter_samples_{tag_out}_cube_{nwalkers}walkers_{nsteps}steps.txt', 
                samples,
                fmt='%.8f', header=str(param_names))
 
     if make_walkers: 
         plot_walkers(sampler.chain.T, best_params, header=param_names)
         plt.tight_layout()
-        plt.savefig(f'test{n_test}_mc_walkers_{tag_out}_{nwalkers}walkers_{nsteps}steps.png', dpi=300)
+        plt.savefig(f'test{test_tag}_mc_walkers_{tag_out}_{nwalkers}walkers_{nsteps}steps.png', dpi=300)
         plt.close()
     if make_corner:
         plot_corner(samples, labels=param_names)
-        plt.savefig(f'test{n_test}_mc_corner_{tag_out}_{nwalkers}walkers_{nsteps}steps.png', dpi=300)
+        plt.savefig(f'test{test_tag}_mc_corner_{tag_out}_{nwalkers}walkers_{nsteps}steps.png', dpi=300)
         plt.close()
 
 def clean_model_folder(model_dir):
@@ -189,7 +208,7 @@ def clean_model_folder(model_dir):
 #***********************
 
 # Leer imagen real tomada con telecopio ALMA
-real_file = root_dir / 'pv' / 'pv_G328_flipped_xy_freq.fits'
+real_file = root_dir / "pv" /config["observation"]["pv_file"]
 
 with fits.open(real_file) as hdu_obs:
     data = hdu_obs[0].data.copy()
@@ -205,7 +224,12 @@ def ln_likelihood(params):
     pid = os.getpid()
     model_id = uuid.uuid4().hex[:10]
     modelname = f'model_{pid}_{model_id}'
-    model_dir = organize_folder(modelname, molec='ch3oh')
+    
+    model_dir = organize_folder(
+    modelname,
+    molec=config["line"]["molecule"]
+    )
+    
     with open(model_dir / 'parameters.json', 'w') as f:
         json.dump({k: float(v) for k, v in param_dict.items()}, f, indent=4)
    
@@ -216,10 +240,18 @@ def ln_likelihood(params):
 
         UlrichDisk(
             nmodel=model_id,
-            **{k: v for k, v in param_dict.items() if k != 'incl'}
+            molec=config["line"]["molecule"],
+            grid_config=config["physical_grid"],
+            model_config=config["model_options"],
+            radmc_config=config["radmc3d"],
+            **{
+                k: v
+                for k, v in param_dict.items()
+                if k != "incl"
+            }
         )
 
-        pv_model = make_line_image_freq(incl=inclination)
+        pv_model = make_line_image_freq(incl=inclination, config=config)
 
     except Exception as error:
         with open(model_dir / 'ERROR.txt', 'w') as f:
@@ -229,7 +261,7 @@ def ln_likelihood(params):
     finally:
         os.chdir(root_dir)
 
-    lnx2 = -0.5 * np.sum(((data - pv_model) / noise)**2)
+    lnx2 = -0.5 * np.sum(((data - pv_model) / mcmc_noise)**2)
     
     with open(model_dir / 'likelihood.txt', 'w') as f:
         f.write(f'ln_likelihood = {lnx2}\n')

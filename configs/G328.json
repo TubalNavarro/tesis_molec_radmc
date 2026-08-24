@@ -1,0 +1,81 @@
+{
+    "source": {
+    "name": "G328",
+    "distance_pc": 2500.0,
+    "ra": "15h57m59.799s",
+    "dec": "-53d58m00.528s",
+    "v_sys_kms": -43.5
+    },
+
+    "line": {
+        "molecule": "ch3oh",
+        "transition": 1,
+        "restfreq_hz": 335582017000.0,
+        "linefreq_hz": 335582017000.0
+    },
+
+    "observation": {
+        "pv_file": "pv_G328_resampled_flipped.fits",
+        "noise_file": "G328_noise.dat"
+    },
+
+    "physical_grid": {
+        "half_size_au": [3492.5, 3492.5,3492.5],
+        "npoints": [127,127,127],
+        "include_zero": true
+    },
+    "model_options": {
+        "disc": true,
+        "envelope": true,
+        "gas_to_dust_ratio": 100.0,
+        "microturbulence_ms": 100.0,
+        "rho_min_env": 1e10
+    },
+
+    "radmc3d": {
+        "nphot": 100000000,
+        "threads": 1,
+        "incl_dust": 1,
+        "incl_freefree": 0,
+        "tgas_eq_tdust": 0,
+        "modified_random_walk": 0,
+        "wavelength_intervals_micron": [0.1, 500.0, 10000.0],
+        "wavelength_divisions": [20, 20]
+    },
+
+    "synthetic_image": {
+        "npix": 127,
+        "nchan": 56,
+        "dv_kms": 0.436180476698,
+        "pixel_scale_arcsec": 0.022
+    },
+
+    "beam": {
+        "major_arcsec": 0.073,
+        "minor_arcsec": 0.055,
+        "pa_deg": 54.4
+    },
+
+    "pv": {
+        "pa_deg": 90.0,
+        "length_arcsec": 2.70601,
+        "width_arcsec": 0.055,
+        "spacing_arcsec": 0.022
+    },
+
+    "mcmc": {
+        "nthreads": 16,
+        "omp_threads": 2,
+        "nwalkers": 32,
+        "nburn": 1,
+        "noise": 5e-3,
+        "nsteps": 200,
+        "frac_stddev": 0.01,
+        "parameter_file": "free_params_ulrich.csv"
+    },
+
+    "output": {
+        "tag": "mcmc_G328",
+        "test_tag": "Resample_3pars"
+    }
+}

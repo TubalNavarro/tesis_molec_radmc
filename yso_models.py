@@ -636,11 +636,24 @@ def plot_ulrichdisk_diagnostics(
         print(f"Error: {err}")
 
         
-def UlrichDisk(nmodel, discFlag=True, cavity_ang=10 ,envFlag=True, MStar=20, MRate=5e-4, Rdisc=600, Arho0=5, Renv=2*3423.75, exp_disc=2.25, prop_only=False, molec='ch3oh', molec_abund=8e-6, BT=5, T10Env=3200, diagnostic_plots=True, diagnostic_tag="Main", diagnostic_output_dir=".", p=0.6):
-
-#cavity = 0
-
+def UlrichDisk(nmodel, *, MStar, MRate, Rdisc, Arho0, Renv, cavity_ang, exp_disc, molec_abund, BT, T10Env, p, molec, grid_config, model_config, radmc_config, prop_only=False, diagnostic_plots=True, diagnostic_tag="Main", diagnostic_output_dir="."):
     t0 = time.time()
+    if grid_config is None:
+        raise ValueError("grid_config must be provided")
+
+    if model_config is None:
+        raise ValueError("model_config must be provided")
+
+    if radmc_config is None:
+        raise ValueError("radmc_config must be provided")
+        t0 = time.time()
+
+    discFlag = model_config["disc"]
+    envFlag = model_config["envelope"]
+
+    gtd_ratio = model_config["gas_to_dust_ratio"]
+    microturbulence = model_config["microturbulence_ms"]
+    rho_min_env = model_config["rho_min_env"]
 
     print('\n')
     print('Passed paremeters are:')
@@ -673,10 +686,13 @@ def UlrichDisk(nmodel, discFlag=True, cavity_ang=10 ,envFlag=True, MStar=20, MRa
     #GRID Definition
     #---------------
     #Cubic grid, each edge ranges [-size, size] au.
+    half_size_au = grid_config["half_size_au"]
+    npoints = grid_config["npoints"]
+    include_zero = grid_config.get("include_zero", True)
+    grid_size = np.asarray(half_size_au) * u.au
+    grid_npoints = np.asarray(npoints, dtype=int)
 
-    sizex = sizey = sizez = 3423.75 * u.au #half size
-    Nx = Ny = Nz = 259 #Number of divisions for each axis
-    GRID = Model.grid([sizex, sizey, sizez], [Nx, Ny, Nz], rt_code = 'radmc3d', include_zero = True)
+    GRID = Model.grid(grid_size, grid_npoints,rt_code="radmc3d", include_zero=include_zero)
     NPoints = GRID.NPoints #Final number of nodes in the grid
   
     #--------
@@ -689,16 +705,14 @@ def UlrichDisk(nmodel, discFlag=True, cavity_ang=10 ,envFlag=True, MStar=20, MRa
     density = Model.density_Env_Disc(RStar, Rd, Rho0, Arho, GRID, exp_disc=exp_disc, 
                                      discFlag = discFlag, envFlag = envFlag,
                                      renv_max = Renv, ang_cavity = Cavity, 
-                                     average_around_Rd=np.median, rho_min_env=1e13)
+                                     average_around_Rd=np.median, rho_min_env=rho_min_env)
 
     #---------------------
     # MODEL TEMPERATURE
     #---------------------
     temperature = Model.temperature(TStar, Rd,T10Env, RStar, MStar, MRate, BT, density, GRID, p=p)
     #temperature=Model.temperature_Constant(density, GRID, discTemp = 2.5*const_T, envTemp = const_T, backTemp = 30.0)
-    
-    #Whitney et al. exponent is p=0.33 (in Keto & Zhang (2/(4+p)) where p<-1  )
-   
+    #Whitney et al. exponent is p=0.33 (in Keto & Zhang (2/(4+p)) where p<-1  )   
     #--------
     #VELOCITY
     #--------
@@ -708,8 +722,8 @@ def UlrichDisk(nmodel, discFlag=True, cavity_ang=10 ,envFlag=True, MStar=20, MRa
 #    #WRITE RADMC-3D FILES
 #    #**********************
     abundance = molec_abund+np.zeros(GRID.NPoints) #Optimize for the molecule
-    gtdratio = Model.gastodust(100., GRID.NPoints)
-    microturb = 100+np.zeros(GRID.NPoints)
+    gtdratio = Model.gastodust(gtd_ratio,GRID.NPoints)
+    microturb = microturbulence +np.zeros(GRID.NPoints)
     prop = {'dens_H2': density.total,
         'dens_dust': 2*ct.mH * density.total * 1/gtdratio, #mass density # ct.mH -> u.amu
         'temp_dust': temperature.total, #30+np.zeros_like(density.total),
@@ -721,23 +735,28 @@ def UlrichDisk(nmodel, discFlag=True, cavity_ang=10 ,envFlag=True, MStar=20, MRa
 
 
     if diagnostic_plots:
-        plot_ulrichdisk_diagnostics(
-            GRID=GRID,
-            prop=prop,
-            density=density,
-            Rdisc_au=Rdisc,
-            Renv_au=Renv / u.au,
-            tag=diagnostic_tag,
-            output_dir=diagnostic_output_dir,
-            show=False
-        )
+        plot_ulrichdisk_diagnostics(GRID=GRID,prop=prop,density=density,Rdisc_au=Rdisc,Renv_au=Renv / u.au,tag=diagnostic_tag,output_dir=diagnostic_output_dir,show=False)
 
     if prop_only: return GRID, prop, density
     
     radmc = rt.Radmc3d(GRID)
-    wavelength_intervals = [1e-1,5e2,1e4] #[5e-3, 5e1, 1e4]
-    wavelength_divisions = [20,20] 
-    radmc.write_radmc3d_control(nphot=100000000, incl_dust=1, setthreads=1, incl_freefree=0, tgas_eq_tdust=0, modified_random_walk=0)
+    
+    wavelength_intervals = (radmc_config["wavelength_intervals_micron"]) 
+
+    wavelength_divisions = (radmc_config["wavelength_divisions"])
+
+    radmc.write_radmc3d_control(
+        nphot=radmc_config["nphot"],
+        incl_dust=radmc_config["incl_dust"],
+        setthreads=radmc_config["threads"],
+        incl_freefree=radmc_config["incl_freefree"],
+        tgas_eq_tdust=radmc_config["tgas_eq_tdust"],
+        modified_random_walk=radmc_config[
+            "modified_random_walk"
+        ]
+    )
+    
+    
     #Threads=1 is the default for ray-traycing, >1 is useful for paralelized MCTherm
     radmc.write_amr_grid()
     radmc.write_dust_density(prop['dens_dust']) #Mass density
@@ -838,22 +857,7 @@ prop_only=False, molec='ch3oh', molec_abund=7.5e-6, p=0.5):
     Model.PrintProperties(density, temperature, GRID, species='dens_ion')
     Model.PrintProperties(density, temperature, GRID, species='dens_e')
     
-    
-    #-------------------------
-    #ROTATION, VSYS, CENTERING
-    #-------------------------
-
-    #xc, yc, zc = [0.0,0.0,0.0]
-    #CENTER = [xc, yc, zc] #New center of the region in the global grid
-    #newProperties = Model.ChangeGeometry(GRID, center = CENTER,  vel = vel,
-    	      	 	             #rot_dict = {'angles': [0*(np.pi/2)*(60./90)], 'axis': ['x'] })
-    #GRID.XYZ = newProperties.newXYZ #XYZ redefinition
-    #vel.x, vel.y, vel.z = newProperties.newVEL #vels redefinition
-
-    #rot_dict = {'angles': [(np.pi/2)*(135./90),(np.pi/2)*(60./90)], 'axis': ['y','x'] })
-
-
-    #**********************
+   #**********************
     #WRITE RADMC-3D FILES
     #**********************
     abundance = molec_abund+np.zeros(GRID.NPoints) #Optimize for the molecule
