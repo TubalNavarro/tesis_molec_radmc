@@ -1,0 +1,90 @@
+{
+    "source": {
+        "name": "G355.78+0.17_2",
+        "distance_pc": 3200.0,
+        "ra": "16h29m46.12974s",
+        "dec": "-48d15m49.9512s",
+        "v_sys_kms": -50.51
+    },
+
+    "line": {
+        "molecule": "ch3oh",
+        "transition": 2,
+        "restfreq_hz": 233772270248.0,
+        "linefreq_hz": 233795666000.0
+    },
+
+    "observation": {
+        "pv_file": "pv_G355.78+0.17_2_freq.fits",
+        "noise_file": "G355.78+0.17_2_noise.dat"
+    },
+
+    "physical_grid": {
+        "half_size_au": [    1648.0,    1648.0,    1648.0],
+        "npoints": [    103,    103,    103],
+        "include_zero": true
+    },
+
+    "model_options": {
+        "disc": true,
+        "envelope": true,
+        "gas_to_dust_ratio": 100.0,
+        "microturbulence_ms": 100.0,
+        "rho_min_env": 1e9
+    },
+
+    "radmc3d": {
+        "nphot": 100000000,
+        "threads": 8,
+        "incl_dust": 1,
+        "incl_freefree": 0,
+        "tgas_eq_tdust": 0,
+        "modified_random_walk": 0,
+
+        "wavelength_intervals_micron": [
+            0.1,
+            500.0,
+            10000.0
+        ],
+        "wavelength_divisions": [
+            20,
+            20
+        ]
+    },
+
+    "synthetic_image": {
+        "npix": 103,
+        "nchan": 58,
+        "dv_kms": 0.6261185044031,
+        "pixel_scale_arcsec": 0.01
+    },
+
+    "beam": {
+        "major_arcsec": 0.109,
+        "minor_arcsec": 0.067,
+        "pa_deg": -42.0
+    },
+
+    "pv": {
+        "pa_deg": 90.0,
+        "length_arcsec": 0.9901,
+        "width_arcsec": 0.03,
+        "spacing_arcsec": 0.01
+    },
+
+    "mcmc": {
+        "nthreads": 4,
+        "omp_threads": 2,
+        "nwalkers": 8,
+        "nburn": 1,
+        "nsteps": 200,
+        "frac_stddev": 0.01,
+        "parameter_file": "params_ulrich_G355.78+0.17_2.csv",
+        "noise": 5e-3
+    },
+
+    "output": {
+        "tag": "mcmc_G355.78+0.17_2",
+        "test_tag": "test2"
+    }
+}

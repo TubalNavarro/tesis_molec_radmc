@@ -117,7 +117,7 @@ def organize_folder(modelname, molec=config["line"]["molecule"]):
 #*******************
 # Read CSV file with parameter space
 
-parameter_file = root_dir / config["mcmc"]["parameter_file"]
+parameter_file = root_dir / "configs" /config["mcmc"]["parameter_file"]
 param_space = pd.read_csv(
     parameter_file,
     skipinitialspace=True

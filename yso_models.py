@@ -12,7 +12,7 @@ import sf3dmodels.utils.units as u
 import astropy.units as U
 import sf3dmodels.rt as rt        
 import sf3dmodels.utils.constants as ct            
-
+from astropy.constants import G
 #-----------------
 #Extra libraries
 #-----------------
@@ -104,6 +104,7 @@ def plot_ulrichdisk_diagnostics(
     GRID,
     prop,
     density,
+    MStar_msun,
     Rdisc_au=None,
     Renv_au=None,
     tag="",
@@ -113,29 +114,26 @@ def plot_ulrichdisk_diagnostics(
     seed=1234,
 ):
     """
-    Plots de diagnóstico para el modelo Ulrich + disco.
-
-    Genera:
-        1) mapas XY de densidad y temperatura en z≈0,
-        2) perfiles radiales esféricos 3D,
-        3) perfiles radiales en el plano medio z≈0,
-        4) visualización 3D por scatter.
+    Genera plots de diagnóstico para el modelo Ulrich + disco.
 
     Parámetros
     ----------
     GRID : objeto GRID de sf3dmodels
-        Debe contener GRID.XYZ y GRID.NPoints.
+        Debe contener GRID.XYZ, GRID.NPoints y GRID.step.
 
     prop : dict
         Diccionario del modelo. Se espera:
-            prop['temp_dust']
-            prop['velocity'] = [vx, vy, vz]
+            prop["temp_dust"]
+            prop["velocity"] = [vx, vy, vz]
 
     density : objeto density de sf3dmodels
         Se espera density.total.
 
+    MStar_msun : float
+        Masa del objeto central en masas solares.
+
     Rdisc_au : float, opcional
-        Radio del disco en AU. En tu modelo corresponde a Rdisc.
+        Radio del disco en AU.
 
     Renv_au : float, opcional
         Radio externo de la envolvente en AU.
@@ -163,36 +161,43 @@ def plot_ulrichdisk_diagnostics(
 
     suffix = f"_{tag}" if tag else ""
 
-    # -------------------------
-    # Coordenadas del GRID
-    # -------------------------
+    # ============================================================
+    # Coordenadas del grid
+    # ============================================================
+
     x_coords = np.asarray(GRID.XYZ[0], dtype=float)
     y_coords = np.asarray(GRID.XYZ[1], dtype=float)
     z_coords = np.asarray(GRID.XYZ[2], dtype=float)
 
     NPoints = GRID.NPoints
-    ##############
-    #Cálculo de total gas mass
-    ##############
-    dx,dy,dz = GRID.step
-    dv=dx*dy*dz
-    print("Step in AU=", (dx*U.m).to(U.au))
-    dv=(dv*U.m**3).to(U.cm**3)
-    total_part=np.sum(density.total*dv)/(1e6*U.cm**3) #to cm-3
-    total_mass=(total_part*3.32e-24*U.g).to(U.M_sun)
-    
 
-    # En sf3dmodels las coordenadas están en las mismas unidades que u.au.
-    # Este script asume que u ya está importado en tu script principal.
+    # ============================================================
+    # Masa total del gas
+    # ============================================================
+
+    dx, dy, dz = GRID.step
+    dv = dx * dy * dz
+
+    print("Step in AU =", (dx * U.m).to(U.au))
+
+    dv = (dv * U.m**3).to(U.cm**3)
+
+    total_part = np.sum(density.total * dv) / (1e6 * U.cm**3)
+    total_mass = (total_part * 3.32e-24 * U.g).to(U.M_sun)
+
+    # Las coordenadas de sf3dmodels están en metros.
     x_au_all = x_coords / u.au
     y_au_all = y_coords / u.au
     z_au_all = z_coords / u.au
 
-    # Radio esférico 3D
-    r_m = np.sqrt(x_coords**2 + y_coords**2 + z_coords**2)
+    # Radio esférico.
+    r_m = np.sqrt(
+        x_coords**2
+        + y_coords**2
+        + z_coords**2
+    )
     r_au = r_m / u.au
 
-    # Tamaño característico de la caja
     box_half_size_au = np.nanmax(
         [
             np.nanmax(np.abs(x_au_all)),
@@ -206,9 +211,10 @@ def plot_ulrichdisk_diagnostics(
     else:
         rmax_plot_au = box_half_size_au
 
-    # -------------------------
+    # ============================================================
     # Propiedades físicas
-    # -------------------------
+    # ============================================================
+
     n_cm3 = np.asarray(density.total, dtype=float) / 1e6
     T_K = np.asarray(prop["temp_dust"], dtype=float)
 
@@ -216,21 +222,33 @@ def plot_ulrichdisk_diagnostics(
     vy = np.asarray(prop["velocity"][1], dtype=float)
     vz = np.asarray(prop["velocity"][2], dtype=float)
 
-    v_kms = np.sqrt(vx**2 + vy**2 + vz**2) / 1e3
+    v_kms = np.sqrt(
+        vx**2
+        + vy**2
+        + vz**2
+    ) / 1e3
 
     # ============================================================
-    # Corte XY en z = 0
+    # Corte XY en z ≈ 0
     # ============================================================
+
     z_unique = np.unique(z_coords)
     z0 = z_unique[np.argmin(np.abs(z_unique))]
 
     if len(z_unique) > 1:
-        dz_min = np.nanmin(np.abs(np.diff(np.sort(z_unique))))
+        dz_min = np.nanmin(
+            np.abs(np.diff(np.sort(z_unique)))
+        )
         z_tol = 0.1 * dz_min
     else:
         z_tol = 0.0
 
-    slice_mask = np.isclose(z_coords, z0, rtol=0.0, atol=z_tol)
+    slice_mask = np.isclose(
+        z_coords,
+        z0,
+        rtol=0.0,
+        atol=z_tol,
+    )
 
     print(f"Puntos en el corte z≈0: {np.sum(slice_mask)}")
 
@@ -245,10 +263,17 @@ def plot_ulrichdisk_diagnostics(
         vy_slice = vy[slice_mask]
         vz_slice = vz[slice_mask]
 
-        v_slice_kms = np.sqrt(vx_slice**2 + vy_slice**2 + vz_slice**2) / 1e3
+        v_slice_kms = np.sqrt(
+            vx_slice**2
+            + vy_slice**2
+            + vz_slice**2
+        ) / 1e3
 
-        # Radio cilíndrico en el plano medio z≈0
-        r_midplane_au = np.sqrt(x_slice**2 + y_slice**2)
+        # Radio cilíndrico en el plano medio.
+        r_midplane_au = np.sqrt(
+            x_slice**2
+            + y_slice**2
+        )
 
         x_unique = np.unique(x_slice)
         y_unique = np.unique(y_slice)
@@ -256,36 +281,68 @@ def plot_ulrichdisk_diagnostics(
         nx2d = len(x_unique)
         ny2d = len(y_unique)
 
-        print(f"2D slice shape inferred from coordinates: ({ny2d}, {nx2d})")
+        print(
+            "2D slice shape inferred from coordinates: "
+            f"({ny2d}, {nx2d})"
+        )
 
         expected_size = nx2d * ny2d
 
         if expected_size != len(x_slice):
-            print("Advertencia: el corte no parece ser una malla rectangular.")
-            print("Se usará scatter en lugar de pcolormesh para el corte 2D.")
+            print(
+                "Advertencia: el corte no parece ser una "
+                "malla rectangular."
+            )
+            print(
+                "Se usará scatter en lugar de pcolormesh "
+                "para el corte 2D."
+            )
 
             use_scatter = True
 
         else:
             use_scatter = False
 
-            # Ordenamos primero por y y luego por x para reconstruir la malla 2D
-            sort_idx = np.lexsort((x_slice, y_slice))
+            # Ordenar primero por y y después por x.
+            sort_idx = np.lexsort(
+                (x_slice, y_slice)
+            )
 
-            x2d = x_slice[sort_idx].reshape(ny2d, nx2d)
-            y2d = y_slice[sort_idx].reshape(ny2d, nx2d)
-            n2d = n_slice[sort_idx].reshape(ny2d, nx2d)
-            T2d = T_slice[sort_idx].reshape(ny2d, nx2d)
+            x2d = x_slice[sort_idx].reshape(
+                ny2d,
+                nx2d,
+            )
 
-        # Ahora usamos 3 filas:
+            y2d = y_slice[sort_idx].reshape(
+                ny2d,
+                nx2d,
+            )
+
+            n2d = n_slice[sort_idx].reshape(
+                ny2d,
+                nx2d,
+            )
+
+            T2d = T_slice[sort_idx].reshape(
+                ny2d,
+                nx2d,
+            )
+
+        # Tres filas:
         # fila 0: mapas XY
         # fila 1: perfiles esféricos 3D
-        # fila 2: perfiles en z≈0
-        fig, axes = plt.subplots(3, 2, figsize=(13, 15))
+        # fila 2: perfiles en z ≈ 0
+
+        fig, axes = plt.subplots(
+            3,
+            2,
+            figsize=(13, 15),
+        )
 
         mass_text = (
             rf"Total gas mass: "
-            rf"$M_{{\rm gas}} = {total_mass.to_value(U.M_sun):.3e}\ M_\odot$"
+            rf"$M_{{\rm gas}} = "
+            rf"{total_mass.to_value(U.M_sun):.3e}\ M_\odot$"
         )
 
         fig.suptitle(
@@ -295,14 +352,15 @@ def plot_ulrichdisk_diagnostics(
             y=0.995,
         )
 
-        # ============================================================
+        # ========================================================
         # Mapas 2D en el plano XY
-        # ============================================================
+        # ========================================================
 
-        # -------------------------
-        # Densidad 2D
-        # -------------------------
-        norm_n = _safe_lognorm(n_slice, floor=1e-12)
+        # Densidad
+        norm_n = _safe_lognorm(
+            n_slice,
+            floor=1e-12,
+        )
 
         if use_scatter:
             im1 = axes[0, 0].scatter(
@@ -313,8 +371,13 @@ def plot_ulrichdisk_diagnostics(
                 norm=norm_n,
                 cmap="viridis",
             )
+
         else:
-            n2d_plot = np.ma.masked_where(n2d <= 0, n2d)
+            n2d_plot = np.ma.masked_where(
+                n2d <= 0,
+                n2d,
+            )
+
             im1 = axes[0, 0].pcolormesh(
                 x2d,
                 y2d,
@@ -326,14 +389,24 @@ def plot_ulrichdisk_diagnostics(
 
         axes[0, 0].set_xlabel("X [AU]")
         axes[0, 0].set_ylabel("Y [AU]")
-        axes[0, 0].set_title(r"Density [cm$^{-3}$] — XY slice, $z \approx 0$")
-        axes[0, 0].set_aspect("equal")
-        plt.colorbar(im1, ax=axes[0, 0], label=r"$n_{\rm H_2}$ [cm$^{-3}$]")
 
-        # -------------------------
-        # Temperatura 2D
-        # -------------------------
-        norm_T = _safe_lognorm(T_slice, floor=1.0)
+        axes[0, 0].set_title(
+            r"Density [cm$^{-3}$] — XY slice, $z\approx0$"
+        )
+
+        axes[0, 0].set_aspect("equal")
+
+        plt.colorbar(
+            im1,
+            ax=axes[0, 0],
+            label=r"$n_{\rm H_2}$ [cm$^{-3}$]",
+        )
+
+        # Temperatura
+        norm_T = _safe_lognorm(
+            T_slice,
+            floor=1.0,
+        )
 
         if use_scatter:
             im2 = axes[0, 1].scatter(
@@ -344,8 +417,13 @@ def plot_ulrichdisk_diagnostics(
                 norm=norm_T,
                 cmap="hot",
             )
+
         else:
-            T2d_plot = np.ma.masked_where(T2d <= 0, T2d)
+            T2d_plot = np.ma.masked_where(
+                T2d <= 0,
+                T2d,
+            )
+
             im2 = axes[0, 1].pcolormesh(
                 x2d,
                 y2d,
@@ -357,29 +435,75 @@ def plot_ulrichdisk_diagnostics(
 
         axes[0, 1].set_xlabel("X [AU]")
         axes[0, 1].set_ylabel("Y [AU]")
-        axes[0, 1].set_title(r"Temperature [K] — XY slice, $z \approx 0$")
+
+        axes[0, 1].set_title(
+            r"Temperature [K] — XY slice, $z\approx0$"
+        )
+
         axes[0, 1].set_aspect("equal")
-        plt.colorbar(im2, ax=axes[0, 1], label="T [K]")
 
-        # ============================================================
-        # Perfiles radiales
-        # ============================================================
+        plt.colorbar(
+            im2,
+            ax=axes[0, 1],
+            label="T [K]",
+        )
+
+        # ========================================================
+        # Bins radiales
+        # ========================================================
+
         nbins = 120
-        r_bins = np.linspace(0.0, rmax_plot_au, nbins + 1)
-        r_centers = 0.5 * (r_bins[:-1] + r_bins[1:])
 
-        # ------------------------------------------------------------
-        # 1) Perfiles radiales esféricos 3D
-        #    r = sqrt(x^2 + y^2 + z^2)
-        # ------------------------------------------------------------
-        dens_med_sph = _binned_profile(r_au, n_cm3, r_bins, statistic="median")
-        temp_med_sph = _binned_profile(r_au, T_K, r_bins, statistic="median")
-        vel_med_sph = _binned_profile(r_au, v_kms, r_bins, statistic="median")
+        r_bins = np.linspace(
+            0.0,
+            rmax_plot_au,
+            nbins + 1,
+        )
 
-        # -------------------------
-        # Densidad esférica 3D
-        # -------------------------
+        r_centers = 0.5 * (
+            r_bins[:-1]
+            + r_bins[1:]
+        )
+
+        # Velocidad kepleriana.
+        v_kep_kms = (
+            np.sqrt(
+                G
+                * (MStar_msun * U.M_sun)
+                / (r_centers * U.au)
+            )
+            .to(U.km / U.s)
+            .value
+        )
+
+        # ========================================================
+        # Perfiles radiales esféricos 3D
+        # ========================================================
+
+        dens_med_sph = _binned_profile(
+            r_au,
+            n_cm3,
+            r_bins,
+            statistic="median",
+        )
+
+        temp_med_sph = _binned_profile(
+            r_au,
+            T_K,
+            r_bins,
+            statistic="median",
+        )
+
+        vel_med_sph = _binned_profile(
+            r_au,
+            v_kms,
+            r_bins,
+            statistic="median",
+        )
+
+        # Densidad esférica
         ax_sph_dens = axes[1, 0]
+
         ax_sph_dens.plot(
             r_centers,
             dens_med_sph,
@@ -405,24 +529,38 @@ def plot_ulrichdisk_diagnostics(
                 label=r"$R_{\rm env}$",
             )
 
-        ax_sph_dens.set_xlabel("Spherical radius [AU]")
-        ax_sph_dens.set_ylabel(r"Density [cm$^{-3}$]")
+        ax_sph_dens.set_xlabel(
+            "Spherical radius [AU]"
+        )
+
+        ax_sph_dens.set_ylabel(
+            r"Density [cm$^{-3}$]"
+        )
+
         ax_sph_dens.set_yscale("log")
         ax_sph_dens.set_xlim(0, rmax_plot_au)
-        ax_sph_dens.set_title(r"Spherical radial density profile")
-        ax_sph_dens.grid(True, alpha=0.3)
+
+        ax_sph_dens.set_title(
+            "Spherical radial density profile"
+        )
+
+        ax_sph_dens.grid(
+            True,
+            alpha=0.3,
+        )
+
         ax_sph_dens.legend()
 
-        # -------------------------
-        # Temperatura y velocidad esféricas 3D
-        # -------------------------
+        # Temperatura y velocidad esféricas
         ax_sph_tv = axes[1, 1]
+
         ax_sph_tv.plot(
             r_centers,
             temp_med_sph,
             lw=2,
             label="T spherical median [K]",
         )
+
         ax_sph_tv.plot(
             r_centers,
             vel_med_sph,
@@ -432,36 +570,76 @@ def plot_ulrichdisk_diagnostics(
         )
 
         if Rdisc_au is not None:
-            ax_sph_tv.axvline(Rdisc_au, color="g", ls="--", alpha=0.8)
+            ax_sph_tv.axvline(
+                Rdisc_au,
+                color="g",
+                ls="--",
+                alpha=0.8,
+            )
 
         if Renv_au is not None:
-            ax_sph_tv.axvline(Renv_au, color="orange", ls="--", alpha=0.8)
+            ax_sph_tv.axvline(
+                Renv_au,
+                color="orange",
+                ls="--",
+                alpha=0.8,
+            )
 
-        ax_sph_tv.set_xlabel("Spherical radius [AU]")
-        ax_sph_tv.set_ylabel("Temperature / Velocity")
+        ax_sph_tv.set_xlabel(
+            "Spherical radius [AU]"
+        )
+
+        ax_sph_tv.set_ylabel(
+            "Temperature / Velocity"
+        )
+
         ax_sph_tv.set_yscale("log")
         ax_sph_tv.set_xlim(0, rmax_plot_au)
-        ax_sph_tv.set_title(r"Spherical radial temperature and velocity profiles")
-        ax_sph_tv.grid(True, alpha=0.3)
+
+        ax_sph_tv.set_title(
+            "Spherical radial temperature and velocity profiles"
+        )
+
+        ax_sph_tv.grid(
+            True,
+            alpha=0.3,
+        )
+
         ax_sph_tv.legend()
 
-        # ------------------------------------------------------------
-        # 2) Perfiles radiales en el plano medio z≈0
-        #    R = sqrt(x^2 + y^2)
-        # ------------------------------------------------------------
-        dens_med_mid = _binned_profile(r_midplane_au, n_slice, r_bins, statistic="median")
-        temp_med_mid = _binned_profile(r_midplane_au, T_slice, r_bins, statistic="median")
-        vel_med_mid = _binned_profile(r_midplane_au, v_slice_kms, r_bins, statistic="median")
+        # ========================================================
+        # Perfiles radiales en el plano medio
+        # ========================================================
 
-        # -------------------------
-        # Densidad en z≈0
-        # -------------------------
+        dens_med_mid = _binned_profile(
+            r_midplane_au,
+            n_slice,
+            r_bins,
+            statistic="median",
+        )
+
+        temp_med_mid = _binned_profile(
+            r_midplane_au,
+            T_slice,
+            r_bins,
+            statistic="median",
+        )
+
+        vel_med_mid = _binned_profile(
+            r_midplane_au,
+            v_slice_kms,
+            r_bins,
+            statistic="median",
+        )
+
+        # Densidad del plano medio
         ax_mid_dens = axes[2, 0]
+
         ax_mid_dens.plot(
             r_centers,
             dens_med_mid,
             lw=2,
-            label=r"midplane median, $z \approx 0$",
+            label=r"midplane median, $z\approx0$",
         )
 
         if Rdisc_au is not None:
@@ -482,85 +660,170 @@ def plot_ulrichdisk_diagnostics(
                 label=r"$R_{\rm env}$",
             )
 
-        ax_mid_dens.set_xlabel("Cylindrical radius in midplane [AU]")
-        ax_mid_dens.set_ylabel(r"Density [cm$^{-3}$]")
+        ax_mid_dens.set_xlabel(
+            "Cylindrical radius in midplane [AU]"
+        )
+
+        ax_mid_dens.set_ylabel(
+            r"Density [cm$^{-3}$]"
+        )
+
         ax_mid_dens.set_yscale("log")
         ax_mid_dens.set_xlim(0, rmax_plot_au)
-        ax_mid_dens.set_title(r"Midplane radial density profile, $z \approx 0$")
-        ax_mid_dens.grid(True, alpha=0.3)
+
+        ax_mid_dens.set_title(
+            r"Midplane radial density profile, $z\approx0$"
+        )
+
+        ax_mid_dens.grid(
+            True,
+            alpha=0.3,
+        )
+
         ax_mid_dens.legend()
 
-        # -------------------------
-        # Temperatura y velocidad en z≈0
-        # -------------------------
+        # Temperatura y velocidad en el plano medio
         ax_mid_tv = axes[2, 1]
+
         ax_mid_tv.plot(
             r_centers,
             temp_med_mid,
             lw=2,
-            label=r"T midplane median [K]",
+            label="T midplane median [K]",
         )
+
         ax_mid_tv.plot(
             r_centers,
             vel_med_mid,
             lw=2,
             ls=":",
-            label=r"v midplane median [km s$^{-1}$]",
+            label=r"$v_\phi$ midplane median [km s$^{-1}$]",
+        )
+
+        # La velocidad kepleriana se muestra únicamente
+        # en el panel del plano medio.
+        ax_mid_tv.plot(
+            r_centers,
+            v_kep_kms,
+            color="crimson",
+            lw=2,
+            ls="--",
+            label=(
+                rf"$v_{{\rm Kep}}$ "
+                rf"($M_\star={MStar_msun:g}\,M_\odot$)"
+            ),
         )
 
         if Rdisc_au is not None:
-            ax_mid_tv.axvline(Rdisc_au, color="g", ls="--", alpha=0.8)
+            ax_mid_tv.axvline(
+                Rdisc_au,
+                color="g",
+                ls="--",
+                alpha=0.8,
+            )
 
         if Renv_au is not None:
-            ax_mid_tv.axvline(Renv_au, color="orange", ls="--", alpha=0.8)
+            ax_mid_tv.axvline(
+                Renv_au,
+                color="orange",
+                ls="--",
+                alpha=0.8,
+            )
 
-        ax_mid_tv.set_xlabel("Cylindrical radius in midplane [AU]")
-        ax_mid_tv.set_ylabel("Temperature / Velocity")
+        ax_mid_tv.set_xlabel(
+            "Cylindrical radius in midplane [AU]"
+        )
+
+        ax_mid_tv.set_ylabel(
+            "Temperature [K] / Velocity [km s$^{-1}$]"
+        )
+
         ax_mid_tv.set_yscale("log")
         ax_mid_tv.set_xlim(0, rmax_plot_au)
-        ax_mid_tv.set_title(r"Midplane radial temperature and velocity profiles, $z \approx 0$")
-        ax_mid_tv.grid(True, alpha=0.3)
+
+        ax_mid_tv.set_title(
+            r"Midplane radial temperature and velocity profiles, "
+            r"$z\approx0$"
+        )
+
+        ax_mid_tv.grid(
+            True,
+            alpha=0.3,
+        )
+
         ax_mid_tv.legend()
 
         plt.tight_layout()
 
-        diag_name = output_dir / f"ulrichdisk_diagnostics{suffix}.png"
-        plt.savefig(diag_name, dpi=180, bbox_inches="tight")
+        diag_name = (
+            output_dir
+            / f"ulrichdisk_diagnostics{suffix}.png"
+        )
+
+        plt.savefig(
+            diag_name,
+            dpi=180,
+            bbox_inches="tight",
+        )
 
         if show:
             plt.show()
         else:
             plt.close(fig)
 
-        print(f"Plot guardado como '{diag_name}'")
+        print(
+            f"Plot guardado como '{diag_name}'"
+        )
 
     else:
-        print("No fue posible construir el corte z≈0")
+        print(
+            "No fue posible construir el corte z≈0"
+        )
 
     # ============================================================
     # Visualización 3D
     # ============================================================
+
     try:
         print("Generando visualización 3D...")
 
         rng = np.random.default_rng(seed)
 
         weights = n_cm3.copy() ** 2
+
         weights[~np.isfinite(weights)] = 0.0
         weights[weights < 0.0] = 0.0
 
         positive = weights > 0.0
 
         if np.sum(positive) == 0:
-            n_points = min(n_random, NPoints)
-            indices = rng.choice(NPoints, size=n_points, replace=False)
-        else:
-            available = np.count_nonzero(positive)
-            n_points = min(n_random, available)
+            n_points = min(
+                n_random,
+                NPoints,
+            )
 
-            candidate_indices = np.where(positive)[0]
+            indices = rng.choice(
+                NPoints,
+                size=n_points,
+                replace=False,
+            )
+
+        else:
+            available = np.count_nonzero(
+                positive
+            )
+
+            n_points = min(
+                n_random,
+                available,
+            )
+
+            candidate_indices = np.where(
+                positive
+            )[0]
+
             weights_pos = weights[positive]
-            weights_pos = weights_pos / np.sum(weights_pos)
+            weights_pos /= np.sum(weights_pos)
 
             indices = rng.choice(
                 candidate_indices,
@@ -572,14 +835,24 @@ def plot_ulrichdisk_diagnostics(
         x_plot = x_coords[indices] / u.au
         y_plot = y_coords[indices] / u.au
         z_plot = z_coords[indices] / u.au
+
         d_plot = n_cm3[indices]
         t_plot = T_K[indices]
 
-        fig = plt.figure(figsize=(15, 6))
+        fig = plt.figure(
+            figsize=(15, 6)
+        )
 
-        ax1 = fig.add_subplot(121, projection="3d")
+        # Densidad 3D
+        ax1 = fig.add_subplot(
+            121,
+            projection="3d",
+        )
 
-        norm_d3d = _safe_lognorm(d_plot, floor=1e-8)
+        norm_d3d = _safe_lognorm(
+            d_plot,
+            floor=1e-8,
+        )
 
         sc1 = ax1.scatter(
             x_plot,
@@ -595,12 +868,27 @@ def plot_ulrichdisk_diagnostics(
         ax1.set_xlabel("X [AU]")
         ax1.set_ylabel("Y [AU]")
         ax1.set_zlabel("Z [AU]")
-        ax1.set_title(r"Density [cm$^{-3}$]")
-        plt.colorbar(sc1, ax=ax1, label=r"$n_{\rm H_2}$ [cm$^{-3}$]")
 
-        ax2 = fig.add_subplot(122, projection="3d")
+        ax1.set_title(
+            r"Density [cm$^{-3}$]"
+        )
 
-        norm_t3d = _safe_lognorm(t_plot, floor=1.0)
+        plt.colorbar(
+            sc1,
+            ax=ax1,
+            label=r"$n_{\rm H_2}$ [cm$^{-3}$]",
+        )
+
+        # Temperatura 3D
+        ax2 = fig.add_subplot(
+            122,
+            projection="3d",
+        )
+
+        norm_t3d = _safe_lognorm(
+            t_plot,
+            floor=1.0,
+        )
 
         sc2 = ax2.scatter(
             x_plot,
@@ -617,24 +905,43 @@ def plot_ulrichdisk_diagnostics(
         ax2.set_ylabel("Y [AU]")
         ax2.set_zlabel("Z [AU]")
         ax2.set_title("Temperature [K]")
-        plt.colorbar(sc2, ax=ax2, label="T [K]")
 
-        plt.tight_layout(rect=[0, 0, 1, 0.97])
+        plt.colorbar(
+            sc2,
+            ax=ax2,
+            label="T [K]",
+        )
 
-        plot3d_name = output_dir / f"ulrichdisk_3d{suffix}.png"
-        plt.savefig(plot3d_name, dpi=180, bbox_inches="tight")
+        plt.tight_layout(
+            rect=[0, 0, 1, 0.97]
+        )
+
+        plot3d_name = (
+            output_dir
+            / f"ulrichdisk_3d{suffix}.png"
+        )
+
+        plt.savefig(
+            plot3d_name,
+            dpi=180,
+            bbox_inches="tight",
+        )
 
         if show:
             plt.show()
         else:
             plt.close(fig)
 
-        print(f"Visualización 3D guardada como '{plot3d_name}'")
+        print(
+            "Visualización 3D guardada como "
+            f"'{plot3d_name}'"
+        )
 
     except Exception as err:
-        print("No fue posible generar la visualización 3D.")
+        print(
+            "No fue posible generar la visualización 3D."
+        )
         print(f"Error: {err}")
-
         
 def UlrichDisk(nmodel, *, MStar, MRate, Rdisc, Arho0, Renv, cavity_ang, exp_disc, molec_abund, BT, T10Env, p, molec, grid_config, model_config, radmc_config, prop_only=False, diagnostic_plots=True, diagnostic_tag="Main", diagnostic_output_dir="."):
     t0 = time.time()
@@ -674,6 +981,7 @@ def UlrichDisk(nmodel, *, MStar, MRate, Rdisc, Arho0, Renv, cavity_ang, exp_disc
     RStar = 10*u.RSun * ( MStar/u.MSun )**0.8  #????
     
     #RStar = 26 * u.RSun * ( MStar/u.MSun )**0.27 * ( MRate / (1e-3*u.MSun_yr) )**0.41
+    #from hosakawa 2009 relation for adiabatic accretion phase
     #LStar=  1e5*u.Lsun
 
     print('RStar:'.format(RStar))
@@ -735,7 +1043,7 @@ def UlrichDisk(nmodel, *, MStar, MRate, Rdisc, Arho0, Renv, cavity_ang, exp_disc
 
 
     if diagnostic_plots:
-        plot_ulrichdisk_diagnostics(GRID=GRID,prop=prop,density=density,Rdisc_au=Rdisc,Renv_au=Renv / u.au,tag=diagnostic_tag,output_dir=diagnostic_output_dir,show=False)
+        plot_ulrichdisk_diagnostics(GRID=GRID,prop=prop,density=density, MStar_msun=MStar/u.MSun, Rdisc_au=Rdisc,Renv_au=Renv / u.au,tag=diagnostic_tag,output_dir=diagnostic_output_dir,show=False)
 
     if prop_only: return GRID, prop, density
     

@@ -20,28 +20,17 @@ PV_FILES = ["pv.fits", "pv_residuals.fits"]
 REST_FREQUENCY = 335.582017 * u.GHz
 
 GROUPS = {
-    "Rdisc": "model_Ulrich_rdisc=*",
+    "Rdisc": "model_Ulrich_Rdisc=*",
     "Arho0": "model_Ulrich_dens_Arho0=*",
     "BT": "model_Ulrich_BT=*",
-    "Incl": "model_Ulrich_i=*",
+    "Incl": "model_Ulrich_incl=*",
+    "p_exp": "model_Ulrich_p=*",
     "test": "model_Ulrich_test",
     "MStar": "model_Ulrich_MStar=*",
     "MRate": "model_Ulrich_Mrate=*",
     "T10": "model_Ulrich_T10=*",
     "Exp": "model_Ulrich_exp=*",
     "Abund": "model_Ulrich_abund=*",
-    "Diagnostic": "model_Ulrich_nodisk_Diagnostic*",
-    "nodisc_Rdisc": "model_Ulrich_nodisk_rdisc=*",
-    "nodisc_Arho0": "model_Ulrich_nodisk_dens_Arho0=*",
-    "nodisc_BT": "model_Ulrich_nodisk_BT=*",
-    "nodisc_Incl": "model_Ulrich_nodisk_i=*",
-    "nodisc_test": "model_Ulrich_nodisk_G328_test",
-    "nodisc_MStar": "model_Ulrich_nodisk_MStar=*",
-    "nodisc_MRate": "model_Ulrich_nodisk_Mrate=*",
-    "nodisc_T10": "model_Ulrich_nodisk_T10=*",
-    "nodisc_Diagnostic": "model_Ulrich_nodisk_Diagnostic*",
-    "nodisc_Exp": "model_Ulrich_nodisk_exp=*",
-    "nodisc_abund": "model_Ulrich_abund=*",
 }
 
 

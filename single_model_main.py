@@ -127,7 +127,7 @@ def run_model(modelname, params, config):
 
 
 def single_model(
-    params_file="various_files/test_pars.json",
+    params_file="configs/test_pars.json",
     modelname="model_Ulrich_test"
 ):
 
@@ -146,7 +146,7 @@ def single_model(
 def parameter_test(
     parameter,
     values,
-    params_file="various_files/parameters.json"
+    params_file="configs/test_pars.json"
 ):
 
     base_params = read_pars_json(
@@ -173,5 +173,9 @@ def parameter_test(
 
 if __name__ == "__main__":
 
-    single_model()
-    # parameter_test( "incl", [0, 5, 10, 20, 30, 40, 45, 50, 60, 70, 80, 85, 90])
+    #single_model()
+   
+    parameter_test( "Rdisc", [300,   800 ])
+    #parameter_test( "incl", [5, 20, 30, 45, 60, 70, 90])
+    #parameter_test("p",[0.3,0.6, 1])
+    #parameter_test("MRate",[5e-4, 8e-4, 1e-3, 2e-3])
