@@ -943,7 +943,7 @@ def plot_ulrichdisk_diagnostics(
         )
         print(f"Error: {err}")
         
-def UlrichDisk(nmodel, *, MStar, MRate, Rdisc, Arho0, Renv, cavity_ang, exp_disc, molec_abund, BT, T10Env, p, molec, grid_config, model_config, radmc_config, prop_only=False, diagnostic_plots=True, diagnostic_tag="Main", diagnostic_output_dir="."):
+def UlrichDisk(nmodel, *, MStar, MRate, Rdisc, Arho0, Renv, cavity_ang, exp_disc, molec_abund, BT, T10Env, p, lum_bol, molec, grid_config, model_config, radmc_config, prop_only=False, diagnostic_plots=True, diagnostic_tag="Main", diagnostic_output_dir="."):
     t0 = time.time()
     if grid_config is None:
         raise ValueError("grid_config must be provided")
@@ -972,17 +972,19 @@ def UlrichDisk(nmodel, *, MStar, MRate, Rdisc, Arho0, Renv, cavity_ang, exp_disc
     print('Renv: {}'.format(Renv))
     #------------------
     MStar = MStar * u.MSun
-    LStar = u.LSun * ( MStar/u.MSun )**4  #L propto M**4?
-    
+
+    #LStar = u.LSun * ( MStar/u.MSun )**4  #L propto M**4?
+    LStar = u.LSun *lum_bol
+
     #-------------------------------
     #Parameters for the Pringle disc
     #-------------------------------
     MRate = MRate * u.MSun_yr
-    RStar = 10*u.RSun * ( MStar/u.MSun )**0.8  #????
+    #RStar = u.RSun * ( MStar/u.MSun )**0.8  #????
     
-    #RStar = 26 * u.RSun * ( MStar/u.MSun )**0.27 * ( MRate / (1e-3*u.MSun_yr) )**0.41
+    RStar = 26 * u.RSun * ( MStar/u.MSun )**0.27 * ( MRate / (1e-3*u.MSun_yr) )**0.41
     #from hosakawa 2009 relation for adiabatic accretion phase
-    #LStar=  1e5*u.Lsun
+   
 
     print('RStar:'.format(RStar))
     TStar = u.TSun * ( (LStar/u.LSun) / (RStar/u.RSun)**2 )**0.25

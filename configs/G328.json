@@ -4,7 +4,8 @@
     "distance_pc": 2500.0,
     "ra": "15h57m59.799s",
     "dec": "-53d58m00.528s",
-    "v_sys_kms": -43.5
+    "v_sys_kms": -43.5,
+    "lum_bol": 1.3e4
     },
 
     "line": {
@@ -59,23 +60,23 @@
     "pv": {
         "pa_deg": 90.0,
         "length_arcsec": 2.70601,
-        "width_arcsec": 0.055,
+        "width_arcsec": 0.022,
         "spacing_arcsec": 0.022
     },
 
     "mcmc": {
-        "nthreads": 8,
+        "nthreads": 16,
         "omp_threads": 2,
-        "nwalkers": 16,
+        "nwalkers": 32,
         "nburn": 1,
-        "noise": 5e-3,
-        "nsteps": 50,
+        "noise": 4e-3,
+        "nsteps": 300,
         "frac_stddev": 0.01,
         "parameter_file": "free_params_ulrich.csv"
     },
 
     "output": {
         "tag": "mcmc_G328",
-        "test_tag": "3pars_rd"
+        "test_tag": "5pars"
     }
 }

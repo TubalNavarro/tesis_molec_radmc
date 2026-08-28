@@ -240,6 +240,7 @@ def ln_likelihood(params):
 
         UlrichDisk(
             nmodel=model_id,
+            lum_bol=config["source"]["lum_bol"],
             molec=config["line"]["molecule"],
             grid_config=config["physical_grid"],
             model_config=config["model_options"],

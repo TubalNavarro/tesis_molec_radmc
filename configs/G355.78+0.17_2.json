@@ -4,7 +4,8 @@
         "distance_pc": 3200.0,
         "ra": "16h29m46.12974s",
         "dec": "-48d15m49.9512s",
-        "v_sys_kms": -50.51
+        "v_sys_kms": -50.51,
+        "lum_bol": 5e4
     },
 
     "line": {
