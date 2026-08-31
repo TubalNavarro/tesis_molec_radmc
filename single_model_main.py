@@ -128,7 +128,7 @@ def run_model(modelname, params, config):
 
 def single_model(
     params_file="configs/test_pars_G328.json",
-    modelname=f"model_Ulrich_test"
+    modelname=f"model_Ulrich_test_noenv2"
 ):
 
     params = read_pars_json(

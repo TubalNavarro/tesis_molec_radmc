@@ -32,8 +32,11 @@ To create a model different from the default, change value of config_file="" in 
 * synthetic_image: radmc3d image construction options. npix is the same as npoints in grid. nchan and dv_kms depends on the spectral resolution of observed pv. pixel_scale_arcsec is the same as spatial arcsec resolution of the pv.
 * beam: observational beam  properties.
 * pv: Properties of the synthetic pv to construct. Spacing and width must be as in the observational pv. pa_ is 90 default. length_arcsec must be spacing*npix_pv_observed+ 01 decimal digits (if not the pv has -1 pixels)  
-* mcmc: minimization parameters. Careful to not use more thrads than needed. If nthreads>nwalkers it can let zombie processes to consume all RAM.  Default is nthreads=nwalkers/2. nburn can be used to do a burning stage and then reset the mcmc run. Now disabled.(commented in MCMC_master). must give parameter csv file for the run.
+* mcmc: minimization parameters. Careful to not use more threads than needed. If nthreads>nwalkers it can let zombie processes to consume all RAM.  Default (secure) is nthreads=nwalkers/2. nburn can be used to do a burning stage and then reset the mcmc run. Now disabled.(commented in MCMC_master). must give parameter csv file for the run. For now n_cpu's is aprox ntrheads/2, so for models with 130 pix, 48 walkers and 24 workers, 12 cpu's are full and a total of 45 Gib Mem. 
 * output: tags for the run.
+
+### Paralelization parameters
+* nthreads: 
 
 ### to do
 * Script that construct JSON file from observational cube or pv header

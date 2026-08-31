@@ -1,13 +1,13 @@
 Parameter,  Mean,   Min,    Max,    Fit
-MStar,      20,     8,      40,    True
-MRate,      2e-3,   5e-4,   5e-3,   True
-Rdisc,      800,    100,    8000,   True
-Arho0,      1,      1,      1,      False
+MStar,      36,     8,      60,     True
+MRate,      2e-3,   1e-4,   1e-2,   True
+Rdisc,      890,    100,    3600,   True
+Arho0,      1.5,    0.5,    10,     True
 Renv,       5000,   5000,   5000,   False
 cavity_ang, 0,      0,      0,      False
-incl,       62.5,   30,     90,     True
-exp_disc,   2.25,   2.25,   2.25,   False
-BT,         1,      1,      1,      False
-T10Env,     3200,   3200,   3200,   False
-molec_abund,2e-6,   5e-7,   8e-6,   True
-p,          0.6,    0.6,    0.6,    False
+incl,       56,     56,     56,     False
+exp_disc,   2.25,   0.5,    3,      True
+BT,         1.5,    0.5,    10,     True
+T10Env,     2800,   800,    3500,   True
+molec_abund,2e-6,   2e-6,   2e-6,   False
+p,          0.58,   0.3,    0.9,    True

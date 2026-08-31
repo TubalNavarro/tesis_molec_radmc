@@ -65,18 +65,18 @@
     },
 
     "mcmc": {
-        "nthreads": 16,
+        "nthreads": 24,
         "omp_threads": 2,
-        "nwalkers": 32,
+        "nwalkers": 48,
         "nburn": 1,
-        "noise": 4e-3,
-        "nsteps": 300,
+        "noise": 3e-3,
+        "nsteps": 1000,
         "frac_stddev": 0.01,
         "parameter_file": "free_params_ulrich.csv"
     },
 
     "output": {
         "tag": "mcmc_G328",
-        "test_tag": "5pars"
+        "test_tag": "8pars"
     }
 }
