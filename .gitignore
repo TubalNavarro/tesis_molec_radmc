@@ -183,5 +183,19 @@ pv_collections*/
 #logs
 mcmc_test*.log
 
-README.md
-make_line.py
+# MCMC memory watchdog runtime files
+mcmc_watchdog/
+.mcmc_watchdog*.pid
+
+# ==========================================
+# MCMC generated model directories
+# ==========================================
+/mcmc_*/
+
+# MCMC rotation outputs
+/individual_scripts/mcmc_rotation_*/
+
+# Runtime monitor files
+/.memory_watchdog.pid
+/.process_memory_monitor.pid
+/G328_memory_monitor.csv

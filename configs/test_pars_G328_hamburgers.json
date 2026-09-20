@@ -1,0 +1,15 @@
+{
+    "MStar": 9.042,
+    "MRate": 0.003,
+    "Rdisc": 4096.0,
+    "Arho0": 0.861,
+    "H0_factor": 0.163,
+    "p_density": 1.111,
+    "q_density": 0.5,
+    "BT": 12.363,
+    "Tmin_disc": 30.0,
+    "vphi_factor": 1.0,
+    "vr0_kms": 2.155,
+    "molec_abund": 2e-06,
+    "incl": 56.0
+}

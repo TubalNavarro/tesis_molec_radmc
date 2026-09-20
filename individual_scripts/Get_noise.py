@@ -7,15 +7,15 @@ from astropy.stats import mad_std
 # Parámetros
 # =========================
 
-cube_noise_reference = "../../cubes/DIHCA_cubes/shared_data/G335.78/G355.78+0.17_2_subcube.fits"
-output_noise_file = "../../tesis_molec_radmc/inputs/G328_noise.dat"
+cube_noise_reference = "/share/Part2/tubal/tesis/cubes/DIHCA_cubes/shared_data/G333.12/G333.12-0.56_1_subcubefix_head.fits"
+output_noise_file = "../inputs/G333.12-0.56_1_noise.dat"
 
 # Si tienes cubo observacional, usa:
-use_observational_cube = False
+use_observational_cube = True
 
 # Si NO tienes cubo observacional, usa ruido constante:
 constant_rms = 2.89e-3   # valor del rms
-nchan_constant = 56   # número de canales que quieres guardar
+nchan_constant = 58   # número de canales que quieres guardar
 
 
 # =========================

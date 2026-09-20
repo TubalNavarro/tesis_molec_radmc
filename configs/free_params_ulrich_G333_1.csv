@@ -1,0 +1,13 @@
+Parameter,  Mean,   Min,    Max,    Fit
+MStar,      16,     5,      80,   True
+MRate,      1e-3,   1e-4,   5e-2,   True
+Rdisc,      598,   100,    4000,    True
+Arho0,      2,      0.5,    20,  True
+Renv,       7200,   7200,   7200,   False
+cavity_ang, 0,      0,      80,    False
+incl,       60,     20,     90,     True
+exp_disc,   2.25,      0.01,    4,  False
+BT,         1.5,    0.5,    20,    True
+T10Env,     470,   100,   3000,   False
+molec_abund,1e-5,   1e-5,   1e-5, False
+p,          0.33,   0.1,    1.5,    False

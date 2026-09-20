@@ -198,11 +198,17 @@ def compute_residuals(
     pv1_file,
     pv2_file,
     output_file,
+    pv1_threshold=3e-3,
 ):
     """
-    Calcula residuos absolutos entre dos PV:
+    Calcula el residuo porcentual respecto a PV1:
 
-        residual = PV1 - PV2
+        residual (%) = 100 * (PV1 - PV2) / PV1
+
+    Los píxeles se guardan como NaN cuando:
+      - PV1 < pv1_threshold
+      - PV1 o PV2 no son finitos
+      - PV1 es cero
     """
 
     with fits.open(pv1_file) as hdul1, fits.open(pv2_file) as hdul2:
@@ -217,46 +223,82 @@ def compute_residuals(
             f"{pv2_file} tiene {data2.shape}"
         )
 
-    residual = data1 - data2
+    valid = (
+        np.isfinite(data1)
+        & np.isfinite(data2)
+        & (data1 >= pv1_threshold)
+        & (data1 != 0)
+    )
 
-    header["HISTORY"] = f"Absolute residuals from {pv1_file} and {pv2_file}"
-    header["COMMENT"] = "Residual = PV1 - PV2"
+    residual = np.full(data1.shape, np.nan, dtype=float)
 
-    fits.writeto(output_file, residual, header, overwrite=True)
+    np.divide(
+        100.0 * (data1 - data2),
+        data1,
+        out=residual,
+        where=valid,
+    )
 
-    print(f"Residuos guardados en: {output_file}")
+    masked_by_threshold = np.count_nonzero(
+        np.isfinite(data1) & (data1 < pv1_threshold)
+    )
+
+    header["BUNIT"] = "%"
+    header["PV1THR"] = (
+        float(pv1_threshold),
+        "Minimum PV1 used for residual",
+    )
+    header["HISTORY"] = (
+        f"Percentage residual relative to PV1; "
+        f"PV1 threshold={pv1_threshold}"
+    )
+    header["COMMENT"] = "Residual (%) = 100 * (PV1 - PV2) / PV1"
+    header["COMMENT"] = "Pixels below PV1THR are stored as NaN"
+
+    fits.writeto(
+        output_file,
+        residual,
+        header,
+        overwrite=True,
+    )
+
+    print(f"Residuos porcentuales guardados en: {output_file}")
     print(f"Shape: {residual.shape}")
+    print(f"Píxeles válidos: {np.count_nonzero(valid)}")
+    print(f"Píxeles bajo el threshold: {masked_by_threshold}")
 
     return residual
-
-
 # ============================================================
 # Parámetros del usuario
 # ============================================================
 
-cube_file = "/share/Part1/tubal/maestria/tesis/cubes/DIHCA_cubes/shared_data/G335.78/G355.78+0.17_2_subcubefix_head.fits"
 
-output_file = "/share/Part1/tubal/maestria/tesis/tesis_molec_radmc/pv/pv_G355.78+0.17_2_freq.fits"
+if __name__ == "__main__":
 
-center = SkyCoord(
-    "16h29m46.12974s",
-    "-48d15m49.9512s",
-    frame="icrs"
-)
 
-pa_deg = 65.0
-length_arcsec = 0.991
-width_arcsec = 0.03
-spacing_arcsec = 0.01
-restfreq_GHz = 233.7956660
+    cube_file = "/share/Part2/tubal/tesis/cubes/DIHCA_cubes/shared_data/G333.12/G333.12-0.56_1_subcubefix_head.fits"
 
-pv = make_pv_diagram(
-    cube_file=cube_file,
-    output_file=output_file,
-    center_coord=center,
-    pa_deg=pa_deg,
-    length_arcsec=length_arcsec,
-    width_arcsec=width_arcsec,
-    spacing_arcsec=spacing_arcsec,
-    restfreq_GHz=restfreq_GHz,
-)
+    output_file = "/share/Part2/tubal/tesis/tesis_molec_radmc/pv/pv_G333.12-0.56_1.fits"
+
+    center = SkyCoord(
+        "16h21m35.37589s",
+        "-50d40m56.6044s",
+        frame="icrs"
+    )
+
+    pa_deg = 135
+    length_arcsec = 0.78
+    width_arcsec = 0.03
+    spacing_arcsec = 0.01
+    restfreq_GHz = 233.7956660
+
+    pv = make_pv_diagram(
+        cube_file=cube_file,
+        output_file=output_file,
+        center_coord=center,
+        pa_deg=pa_deg,
+        length_arcsec=length_arcsec,
+        width_arcsec=width_arcsec,
+        spacing_arcsec=spacing_arcsec,
+        restfreq_GHz=restfreq_GHz,
+    )

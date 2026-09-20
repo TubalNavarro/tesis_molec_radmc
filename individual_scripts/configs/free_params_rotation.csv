@@ -1,0 +1,8 @@
+Parameter,Mean,Min,Max,Fit
+MStar,20.0,1.0,80.0,True
+Mdisk,20.0,0.1,200.0,True
+Menv,20.0,1,400.0,True
+diskPower,-2.25,-3.0,-0.5,True
+Rdisk,777.0,100,3600,True
+envPower,1.5, 1.5, 1.5, False
+incl,56.0,20.0,90.0,False

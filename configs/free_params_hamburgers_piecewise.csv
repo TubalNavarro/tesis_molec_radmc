@@ -1,0 +1,15 @@
+Parameter,Mean,Min,Max,Fit
+MStar,36,8,60,True
+MRate,0.002,0.0001,0.01,True
+Rdisc,890,100,3600,True
+Arho0,2,0.5,15,True
+H0_factor,0.03,0.005,0.2,False
+BT,1.2,0.2,15,True
+T10Env,2260,800,3500,False
+p_temp,0.33,0.1,1.0,False
+Tmin_disc,30,10,100,False
+Tmin_env,30,10,100,False
+vphi_factor,1.0,0.2,2.0,False
+vr_factor,0.0,0.0,2.0,False
+molec_abund,2e-06,2e-06,2e-06,False
+incl,56,56,56,False

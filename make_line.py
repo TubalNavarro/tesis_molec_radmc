@@ -127,26 +127,52 @@ def make_line_image_freq(incl, config):
     syn_cube = SpectralCube.read(workdir+'raw_radmc_header_updated.fits') #Jy/pix
     hdr_syn = syn_cube.header
 
-    #subtract continuum
-    print('\n')
-    print('Starting continuum_subtraction ')
-
+ # subtract continuum
+    print('\nStarting continuum_subtraction')
+    
     csub_image = 'raw_radmc_csub.fits'
     cont_image = 'raw_radmc_cont.fits'
-    hdul = fits.open(workdir+'raw_radmc_header_updated.fits')
-    data = hdul[0].data
-    data2 = data.copy()
-    datac = data.copy()	
-
-    for x in range(data.shape[2]):
-        for y in range(data.shape[1]):
-            data2[:,y,x] = data[:,y,x] - data[:,y,x].min()
-            datac[:,y,x] = data[:,y,x].min()
     
-    fits.writeto(csub_image,data2,hdul[0].header,overwrite=True)
-    fits.writeto(cont_image,datac,hdul[0].header,overwrite=True)	#QZ
-
-
+    with fits.open(workdir + 'raw_radmc_header_updated.fits') as hdul:
+        data = hdul[0].data
+        header = hdul[0].header.copy()
+    
+    # Número de canales en cada extremo usados para estimar el continuo
+    nedge = 3
+    
+    # Tomamos ambos extremos del cubo
+    edge_channels = np.concatenate(
+        [data[:nedge, :, :],
+         data[-nedge:, :, :]],
+        axis=0
+    )
+    
+    # Continuo estimado para cada píxel espacial
+    continuum = np.median(edge_channels, axis=0)
+    
+    # Restar el mismo continuo a todos los canales
+    data_csub = data - continuum[None, :, :]
+    
+    # Cubo de continuo, por compatibilidad con tu pipeline
+    data_cont = np.broadcast_to(
+        continuum[None, :, :],
+        data.shape
+    ).copy()
+    
+    fits.writeto(
+        csub_image,
+        data_csub,
+        header,
+        overwrite=True
+    )
+    
+    fits.writeto(
+        cont_image,
+        data_cont,
+        header,
+        overwrite=True
+    )
+    
     def convolve(cube_name):
     # define a beam of the size of the pixel
         clean_name = cube_name.replace("raw_radmc_", "").replace("header_updated", "")

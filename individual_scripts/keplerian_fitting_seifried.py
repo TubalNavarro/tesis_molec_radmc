@@ -8,6 +8,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 from astropy.io import fits
+from scipy.special import ellipk, ellipe
 
 # -----------------------------------------------------------------------------
 # Constantes
@@ -17,6 +18,8 @@ M_SUN = 1.98847e30            # kg
 M_H = 1.6735575e-27           # kg
 M_H2 = 2.0 * M_H              # kg; cada partícula de la envolvente es H2
 AU = 1.495978707e11           # m
+R_SUN = 6.957e8               # m
+R_SUN_TO_AU = R_SUN / AU
 C_KMS = 299792.458            # km/s
 PC_TO_AU = 206264.80624709636
 V_1AU_1MSUN = np.sqrt(G * M_SUN / AU) / 1000.0  # 29.7847 km/s
@@ -366,6 +369,328 @@ def rotation_velocity_point_plus_envelope_kms(
     return v_los, menv
 
 
+
+# -----------------------------------------------------------------------------
+# Disco de Pringle / disco flared axisimétrico
+# -----------------------------------------------------------------------------
+def pringle_scale_height_au(
+    r_au: np.ndarray | float,
+    rstar_rsun: float = 10.0,
+    height_fraction: float = 0.01,
+    flaring_power: float = 1.25,
+) -> np.ndarray:
+    """Escala de altura H(R) del disco.
+
+    Se usa
+
+        H(R) = H_* (R / R_*)^beta,
+        H_*  = height_fraction * R_*.
+
+    Con los defaults beta=1.25 y rho_mid ~ R^-2.25 se recupera la pareja
+    habitual alpha=beta+1 del disco flared (alpha=2.25, beta=1.25).
+    """
+    if rstar_rsun <= 0:
+        raise ValueError("--disk-rstar-rsun debe ser > 0.")
+    if height_fraction <= 0:
+        raise ValueError("--disk-height-fraction debe ser > 0.")
+    if flaring_power <= 0:
+        raise ValueError("--disk-flaring-power debe ser > 0.")
+
+    r = np.asarray(r_au, dtype=float)
+    if np.any(r <= 0):
+        raise ValueError("Los radios del disco deben ser > 0 AU.")
+
+    rstar_au = rstar_rsun * R_SUN_TO_AU
+    hstar_au = height_fraction * rstar_au
+    return hstar_au * (r / rstar_au) ** flaring_power
+
+
+def pringle_midplane_density_kg_m3(
+    r_au: np.ndarray | float,
+    n0_cm3: float = 1.0e7,
+    r0_au: float = 3600.0,
+    density_power: float = -2.25,
+) -> np.ndarray:
+    """Densidad volumétrica en el plano medio del disco.
+
+    La normalización se interpreta como densidad numérica de H2:
+
+        n_mid(R) = n0 * (R/r0)^q
+
+    con q=-2.25 por default. Cada partícula tiene masa 2 m_H.
+    """
+    if n0_cm3 <= 0:
+        raise ValueError("--disk-n0 debe ser > 0 cm^-3.")
+    if r0_au <= 0:
+        raise ValueError("--disk-r0-au debe ser > 0.")
+
+    r = np.asarray(r_au, dtype=float)
+    if np.any(r <= 0):
+        raise ValueError("Los radios del disco deben ser > 0 AU.")
+
+    n_m3 = n0_cm3 * 1.0e6 * (r / r0_au) ** density_power
+    return n_m3 * M_H2
+
+
+def pringle_surface_density_kg_m2(
+    r_au: np.ndarray | float,
+    n0_cm3: float = 1.0e7,
+    r0_au: float = 3600.0,
+    density_power: float = -2.25,
+    rstar_rsun: float = 10.0,
+    height_fraction: float = 0.01,
+    flaring_power: float = 1.25,
+) -> np.ndarray:
+    """Densidad superficial Sigma(R) para una vertical Gaussiana.
+
+    rho(R,z) = rho_mid(R) exp[-z^2/(2 H(R)^2)]
+    Sigma(R) = sqrt(2*pi) rho_mid(R) H(R)
+    """
+    r = np.asarray(r_au, dtype=float)
+    rho_mid = pringle_midplane_density_kg_m3(
+        r,
+        n0_cm3=n0_cm3,
+        r0_au=r0_au,
+        density_power=density_power,
+    )
+    h_m = pringle_scale_height_au(
+        r,
+        rstar_rsun=rstar_rsun,
+        height_fraction=height_fraction,
+        flaring_power=flaring_power,
+    ) * AU
+    return np.sqrt(2.0 * np.pi) * rho_mid * h_m
+
+
+def pringle_disk_mass_msun(
+    rmax_au: float,
+    n0_cm3: float = 1.0e7,
+    r0_au: float = 3600.0,
+    density_power: float = -2.25,
+    rstar_rsun: float = 10.0,
+    height_fraction: float = 0.01,
+    flaring_power: float = 1.25,
+    nradial: int = 2000,
+) -> float:
+    """Masa total del disco entre R_* y Rmax.
+
+    Integra 2*pi*R*Sigma(R)dR. La integración vertical es analítica gracias
+    a la Gaussiana.
+    """
+    rstar_au = rstar_rsun * R_SUN_TO_AU
+    if rmax_au <= rstar_au:
+        raise ValueError("--disk-rmax-au debe ser mayor que R_*.")
+    if nradial < 50:
+        raise ValueError("nradial debe ser >= 50.")
+
+    r = np.geomspace(rstar_au, rmax_au, int(nradial))
+    sigma = pringle_surface_density_kg_m2(
+        r,
+        n0_cm3=n0_cm3,
+        r0_au=r0_au,
+        density_power=density_power,
+        rstar_rsun=rstar_rsun,
+        height_fraction=height_fraction,
+        flaring_power=flaring_power,
+    )
+    r_m = r * AU
+    integrand = 2.0 * np.pi * r_m * sigma
+    return float(np.trapz(integrand, r_m) / M_SUN)
+
+
+def _ring_radial_accel_per_kg(
+    field_r_m: float,
+    ring_r_m: np.ndarray,
+    z_m: np.ndarray,
+) -> np.ndarray:
+    """Aceleración radial por kg debida a anillos circulares.
+
+    El potencial de un anillo de masa M y radio a, evaluado en (R,z), es
+
+        Phi = -2 G M / (pi D) K(m),
+        D^2 = (R+a)^2 + z^2,
+        m   = 4 a R / D^2.
+
+    Aquí se deriva analíticamente respecto a R para evitar diferencias
+    finitas. El signo es radial: negativo=hacia el centro, positivo=hacia
+    afuera. La salida es por unidad de masa del anillo.
+    """
+    R = float(field_r_m)
+    if R <= 0:
+        raise ValueError("El radio de evaluación debe ser > 0.")
+
+    a = np.asarray(ring_r_m, dtype=float)
+    z = np.asarray(z_m, dtype=float)
+
+    d2 = (a + R) ** 2 + z**2
+    d = np.sqrt(d2)
+    m = 4.0 * a * R / d2
+
+    # La altura finita evita m=1 exactamente. El clip sólo protege contra
+    # redondeo numérico cuando R~a y |z| es muy pequeño.
+    m = np.clip(m, 1.0e-15, 1.0 - 1.0e-13)
+
+    K = ellipk(m)
+    E = ellipe(m)
+
+    # dK/dR = [E/(2(1-m)) - K/2] * d(ln m)/dR
+    dlnm_dR = 1.0 / R - 2.0 * (a + R) / d2
+    dK_dR = (E / (2.0 * (1.0 - m)) - 0.5 * K) * dlnm_dR
+
+    d_K_over_D_dR = dK_dR / d - K * (a + R) / d**3
+
+    # g_R = -dPhi/dR = (2 G M/pi) d(K/D)/dR
+    return (2.0 * G / np.pi) * d_K_over_D_dR
+
+
+def pringle_disk_radial_acceleration_m_s2(
+    r_eval_au: np.ndarray,
+    n0_cm3: float = 1.0e7,
+    r0_au: float = 3600.0,
+    density_power: float = -2.25,
+    rstar_rsun: float = 10.0,
+    height_fraction: float = 0.01,
+    flaring_power: float = 1.25,
+    rmax_au: float = 3600.0,
+    nradial: int = 700,
+    nz: int = 12,
+) -> np.ndarray:
+    """Aceleración radial exacta del disco axisimétrico en su plano medio.
+
+    Modelo de densidad:
+
+        rho(R,z) = rho_mid(R) exp[-z^2/(2 H(R)^2)]
+        rho_mid(R) propto R^q
+        H(R) = 0.01 R_* (R/R_*)^beta        (defaults)
+
+    Se integra el potencial gravitatorio de anillos con espesor vertical
+    Gaussiano. La integral azimutal se hace analíticamente mediante
+    integrales elípticas completas; la integral vertical usa cuadratura
+    Gauss-Hermite y la radial se integra numéricamente.
+
+    A diferencia de una envolvente esférica, NO se usa GM(<R)/R: las capas
+    exteriores de un disco sí ejercen una fuerza radial neta.
+    """
+    r_eval = np.asarray(r_eval_au, dtype=float)
+    if np.any(r_eval <= 0):
+        raise ValueError("r_eval_au debe contener sólo radios > 0.")
+    if rmax_au <= 0:
+        raise ValueError("--disk-rmax-au debe ser > 0.")
+    if nradial < 100:
+        raise ValueError("--disk-nradial debe ser >= 100.")
+    if nz < 4:
+        raise ValueError("--disk-nz debe ser >= 4.")
+    if nz % 2 != 0:
+        raise ValueError(
+            "--disk-nz debe ser par para no colocar un nodo exactamente en z=0."
+        )
+
+    rstar_au = rstar_rsun * R_SUN_TO_AU
+    if rmax_au <= rstar_au:
+        raise ValueError(
+            f"--disk-rmax-au={rmax_au:g} AU debe ser > R_*={rstar_au:.6g} AU."
+        )
+
+    # Radios fuente. Una malla logarítmica resuelve simultáneamente R_* y
+    # escalas de cientos/miles de AU.
+    a_au = np.geomspace(rstar_au, rmax_au, int(nradial))
+    a_m = a_au * AU
+
+    rho_mid = pringle_midplane_density_kg_m3(
+        a_au,
+        n0_cm3=n0_cm3,
+        r0_au=r0_au,
+        density_power=density_power,
+    )
+    h_m = pringle_scale_height_au(
+        a_au,
+        rstar_rsun=rstar_rsun,
+        height_fraction=height_fraction,
+        flaring_power=flaring_power,
+    ) * AU
+
+    # Gauss-Hermite:
+    # integral rho_mid exp[-z^2/(2H^2)] f(z) dz
+    # = rho_mid sqrt(2) H sum_i w_i f(sqrt(2) H x_i)
+    xh, wh = np.polynomial.hermite.hermgauss(int(nz))
+    z_m = np.sqrt(2.0) * h_m[:, None] * xh[None, :]
+
+    # Masa por unidad de radio fuente y por nodo vertical [kg/m].
+    # dM = 2*pi*a da * rho dz
+    dm_da = (
+        2.0
+        * np.pi
+        * a_m[:, None]
+        * rho_mid[:, None]
+        * np.sqrt(2.0)
+        * h_m[:, None]
+        * wh[None, :]
+    )
+
+    g = np.empty_like(r_eval, dtype=float)
+
+    # Un loop sólo sobre radios de evaluación; cada evaluación integra todo
+    # el disco de forma vectorizada en (radio fuente, z).
+    for j, R_au in enumerate(r_eval):
+        R_m = float(R_au * AU)
+        g_per_kg = _ring_radial_accel_per_kg(
+            R_m,
+            a_m[:, None],
+            z_m,
+        )
+
+        # Sumar cuadratura vertical y luego integrar sobre el radio fuente.
+        integrand_a = np.sum(g_per_kg * dm_da, axis=1)  # m/s^2 por m de da
+        g[j] = np.trapz(integrand_a, a_m)
+
+    return g
+
+
+def rotation_velocity_reference_plus_components_kms(
+    r_au: np.ndarray,
+    point_mass_msun: float,
+    incl_deg: float,
+    envelope_mass_msun_grid: np.ndarray | None = None,
+    disk_g_m_s2: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Velocidad LOS para masa puntual + componentes gravitatorias.
+
+    Devuelve (v_los, v2_circular), donde v2_circular está en (m/s)^2.
+    La contribución del disco se suma como R*dPhi/dR = -R*g_R y puede ser
+    negativa localmente si la masa exterior tira hacia afuera.
+    """
+    r = np.asarray(r_au, dtype=float)
+    if np.any(r <= 0):
+        raise ValueError("Los radios deben ser > 0 AU.")
+    if point_mass_msun < 0:
+        raise ValueError("La masa puntual debe ser >= 0.")
+
+    r_m = r * AU
+    v2 = G * point_mass_msun * M_SUN / r_m
+
+    if envelope_mass_msun_grid is not None:
+        menv = np.asarray(envelope_mass_msun_grid, dtype=float)
+        if menv.shape != r.shape:
+            raise ValueError("envelope_mass_msun_grid no coincide con r_au.")
+        v2 = v2 + G * menv * M_SUN / r_m
+
+    if disk_g_m_s2 is not None:
+        gdisk = np.asarray(disk_g_m_s2, dtype=float)
+        if gdisk.shape != r.shape:
+            raise ValueError("disk_g_m_s2 no coincide con r_au.")
+        v2 = v2 - r_m * gdisk
+
+    sini = np.sin(np.deg2rad(incl_deg))
+    if sini <= 0:
+        raise ValueError("--incl debe ser > 0 grados.")
+
+    # Si un disco extremadamente masivo produce aceleración neta hacia afuera
+    # en algún punto, allí no existe una órbita circular de este modelo.
+    v = np.full_like(v2, np.nan, dtype=float)
+    valid = v2 > 0
+    v[valid] = np.sqrt(v2[valid]) / 1000.0 * sini
+    return v, v2
+
 # -----------------------------------------------------------------------------
 # Análisis principal
 # -----------------------------------------------------------------------------
@@ -386,6 +711,16 @@ def analyze_pv(
     envelope_r0_au: float = 3600.0,
     envelope_power: float = 1.5,
     envelope_rout_au: float | None = None,
+    plot_disk: bool = True,
+    disk_n0_cm3: float = 1.0e7,
+    disk_r0_au: float = 3600.0,
+    disk_density_power: float = -2.25,
+    disk_rstar_rsun: float = 10.0,
+    disk_height_fraction: float = 0.01,
+    disk_flaring_power: float = 1.25,
+    disk_rmax_au: float = 3600.0,
+    disk_nradial: int = 700,
+    disk_nz: int = 12,
     resolution_arcsec: float = 0.022,
     min_radius_au: float | None = None,
     output: str | None = "kepler_fit.png",
@@ -550,14 +885,89 @@ def analyze_pv(
         )
 
     # ------------------------------------------------------------------
+    # Potencial del disco de Pringle
+    # ------------------------------------------------------------------
+    # El disco NO se trata como una distribución esférica. Calculamos su
+    # aceleración radial axisimétrica en el plano medio integrando anillos.
+    gdisk_grid = None
+    vref_plus_disk = None
+    vref_plus_env_plus_disk = None
+    disk_mass_total_msun = None
+
+    if plot_disk:
+        disk_mass_total_msun = pringle_disk_mass_msun(
+            rmax_au=disk_rmax_au,
+            n0_cm3=disk_n0_cm3,
+            r0_au=disk_r0_au,
+            density_power=disk_density_power,
+            rstar_rsun=disk_rstar_rsun,
+            height_fraction=disk_height_fraction,
+            flaring_power=disk_flaring_power,
+        )
+
+        if reference_mass_msun is not None:
+            print("Calculando potencial axisimétrico del disco de Pringle...")
+            gdisk_grid = pringle_disk_radial_acceleration_m_s2(
+                rgrid,
+                n0_cm3=disk_n0_cm3,
+                r0_au=disk_r0_au,
+                density_power=disk_density_power,
+                rstar_rsun=disk_rstar_rsun,
+                height_fraction=disk_height_fraction,
+                flaring_power=disk_flaring_power,
+                rmax_au=disk_rmax_au,
+                nradial=disk_nradial,
+                nz=disk_nz,
+            )
+
+            # Masa de referencia + disco
+            vref_plus_disk, _ = rotation_velocity_reference_plus_components_kms(
+                rgrid,
+                point_mass_msun=reference_mass_msun,
+                incl_deg=incl_deg,
+                disk_g_m_s2=gdisk_grid,
+            )
+
+            # Masa de referencia + envolvente + disco, si la envolvente está activa
+            if plot_envelope:
+                if menv_grid is None:
+                    menv_grid = envelope_mass_msun(
+                        rgrid,
+                        n0_cm3=envelope_n0_cm3,
+                        r0_au=envelope_r0_au,
+                        density_power=envelope_power,
+                        rout_au=envelope_rout_au,
+                    )
+                vref_plus_env_plus_disk, _ = (
+                    rotation_velocity_reference_plus_components_kms(
+                        rgrid,
+                        point_mass_msun=reference_mass_msun,
+                        incl_deg=incl_deg,
+                        envelope_mass_msun_grid=menv_grid,
+                        disk_g_m_s2=gdisk_grid,
+                    )
+                )
+
+    # ------------------------------------------------------------------
     # Gráfica
     # ------------------------------------------------------------------
     fig, ax = plt.subplots(figsize=(9, 6.5))
+
+    # Colores fijos y distintos para cada conjunto/curva.
+    # Cada perfil usa exactamente el mismo color en ambos cuadrantes.
+    observed_color = "tab:blue"
+    excluded_color = "tab:gray"
+    fit_color = "tab:orange"
+    reference_color = "tab:green"
+    envelope_color = "tab:red"
+    disk_color = "tab:purple"
+    total_color = "tab:brown"
 
     ax.scatter(
         r_signed_au[~excluded],
         vel_rel_pts[~excluded],
         s=28,
+        color=observed_color,
         label=rf"Envolvente observada $\geq {nsigma:g}\sigma$",
     )
 
@@ -567,7 +977,7 @@ def analyze_pv(
             vel_rel_pts[excluded],
             s=48,
             facecolors="none",
-            edgecolors="black",
+            edgecolors=excluded_color,
             linewidths=1.2,
             label="Excluidos del ajuste",
         )
@@ -581,6 +991,7 @@ def analyze_pv(
         left_rsign * rgrid,
         left_vsign * vkep,
         lw=2,
+        color=fit_color,
         label=(
             "Kepler ajustada: "
             + mass_label
@@ -591,7 +1002,7 @@ def analyze_pv(
         right_rsign * rgrid,
         right_vsign * vkep,
         lw=2,
-        color=fit_line.get_color(),
+        color=fit_color,
     )
 
     # Kepleriana de masa fijada por el usuario
@@ -601,6 +1012,7 @@ def analyze_pv(
             left_vsign * vkep_reference,
             lw=2,
             ls="--",
+            color=reference_color,
             label=(
                 rf"Kepler referencia: $M_\star={reference_mass_msun:g}\,M_\odot$, "
                 rf"$i={incl_deg:g}^\circ$"
@@ -611,7 +1023,7 @@ def analyze_pv(
             right_vsign * vkep_reference,
             lw=2,
             ls="--",
-            color=ref_line.get_color(),
+            color=reference_color,
         )
 
         # Masa de referencia + envolvente. Esta es la única curva
@@ -622,7 +1034,7 @@ def analyze_pv(
                 left_vsign * vcomb_reference,
                 lw=2,
                 ls=":",
-                color=ref_line.get_color(),
+                color=envelope_color,
                 label=(
                     rf"Referencia+env.: $M_\star={reference_mass_msun:g}\,M_\odot$, "
                     rf"$n_0={envelope_n0_cm3:.1e}\,\mathrm{{cm}}^{{-3}}$, "
@@ -634,11 +1046,58 @@ def analyze_pv(
                 right_vsign * vcomb_reference,
                 lw=2,
                 ls=":",
-                color=ref_line.get_color(),
+                color=envelope_color,
             )
 
-    ax.axhline(0.0, ls="--", lw=1.2, label=r"$v-v_{\rm sys}=0$")
-    ax.axvline(0.0, ls=":", lw=1.2)
+        # Masa de referencia + disco de Pringle
+        if vref_plus_disk is not None:
+            ax.plot(
+                left_rsign * rgrid,
+                left_vsign * vref_plus_disk,
+                lw=2,
+                ls="-.",
+                color=disk_color,
+                label=(
+                    rf"Referencia+disco: $q={disk_density_power:g}$, "
+                    rf"$R_{{\max}}={disk_rmax_au:g}$ AU, "
+                    rf"$i={incl_deg:g}^\circ$"
+                ),
+            )
+            ax.plot(
+                right_rsign * rgrid,
+                right_vsign * vref_plus_disk,
+                lw=2,
+                ls="-.",
+                color=disk_color,
+            )
+
+        # Masa de referencia + envolvente + disco
+        if vref_plus_env_plus_disk is not None:
+            total_ls = (0, (5, 1, 1, 1, 1, 1))
+            ax.plot(
+                left_rsign * rgrid,
+                left_vsign * vref_plus_env_plus_disk,
+                lw=2.2,
+                ls=total_ls,
+                color=total_color,
+                label=(
+                    rf"Referencia+env.+disco: $M_\star={reference_mass_msun:g}\,M_\odot$, "
+                    rf"$i={incl_deg:g}^\circ$"
+                ),
+            )
+            ax.plot(
+                right_rsign * rgrid,
+                right_vsign * vref_plus_env_plus_disk,
+                lw=2.2,
+                ls=total_ls,
+                color=total_color,
+            )
+
+    ax.axhline(
+        0.0, ls="--", lw=1.2, color="black", alpha=0.7,
+        label=r"$v-v_{\rm sys}=0$"
+    )
+    ax.axvline(0.0, ls=":", lw=1.2, color="black", alpha=0.7)
 
     ax.set_xlabel("Offset espacial proyectado [AU]")
     ax.set_ylabel(r"$v-v_{\rm sys}$ [km/s]")
@@ -656,15 +1115,7 @@ def analyze_pv(
             vcenter_pv + 0.75 * vrange_pv,
         )
 
-    ax.legend(
-        loc="upper right",
-        bbox_to_anchor=(0.5, 0.5, 0.5, 0.5),
-        bbox_transform=ax.transAxes,
-        fontsize=8,
-        labelspacing=0.4,
-        handlelength=1.5,
-        frameon=True
-    )
+    ax.legend(fontsize=9)
     fig.tight_layout()
 
     if output:
@@ -743,6 +1194,30 @@ def analyze_pv(
         else:
             print("  R_out no fijado; el perfil se usa hasta el máximo radio graficado")
 
+    if plot_disk:
+        print()
+        print("Disco de Pringle / flared:")
+        print(
+            f"  n_mid(R) = {disk_n0_cm3:.3g} "
+            f"(R/{disk_r0_au:g} AU)^({disk_density_power:g}) cm^-3"
+        )
+        print(
+            f"  R_* = {disk_rstar_rsun:g} R_sun = "
+            f"{disk_rstar_rsun * R_SUN_TO_AU:.6g} AU"
+        )
+        print(
+            f"  H(R_*) = {disk_height_fraction:g} R_*; "
+            f"H(R) propto R^{disk_flaring_power:g}"
+        )
+        print(f"  R_max = {disk_rmax_au:g} AU")
+        if disk_mass_total_msun is not None:
+            print(f"  M_disk(R_*..R_max) = {disk_mass_total_msun:.4g} M_sun")
+        if reference_mass_msun is None:
+            print(
+                "  NOTA: no se proporcionó --reference-mass; se calculó la "
+                "masa del disco, pero no se dibujó una curva estrella+disco."
+            )
+
     print("--------------------------------------\n")
 
     return {
@@ -767,6 +1242,10 @@ def analyze_pv(
         "rgrid_au": rgrid,
         "envelope_mass_grid_msun": menv_grid,
         "combined_velocity_reference_kms": vcomb_reference,
+        "disk_radial_acceleration_m_s2": gdisk_grid,
+        "disk_mass_total_msun": disk_mass_total_msun,
+        "reference_plus_disk_velocity_kms": vref_plus_disk,
+        "reference_plus_envelope_plus_disk_velocity_kms": vref_plus_env_plus_disk,
     }
 
 
@@ -777,8 +1256,8 @@ def main():
     parser = argparse.ArgumentParser(
         description=(
             "Extrae una envolvente de 5 sigma de un PV, ajusta una Kepleriana "
-            "y puede graficar el potencial combinado de una masa puntual + "
-            "una envolvente esférica n(r) proporcional a r^-1.5."
+            "y puede graficar potenciales combinados de una masa puntual, "
+            "una envolvente esférica y un disco de Pringle/flared axisimétrico."
         )
     )
 
@@ -857,11 +1336,11 @@ def main():
     )
 
     parser.add_argument(
-        "--ref-mass",
+        "--reference-mass",
         "--plot-mass",
         dest="reference_mass",
         type=float,
-        default=20,
+        default=None,
         help=(
             "Masa [M_sun] de una Kepleriana adicional a graficar. "
             "También se dibuja esa misma masa puntual + envolvente."
@@ -887,12 +1366,12 @@ def main():
     parser.add_argument(
         "--envelope-r0-au",
         type=float,
-        default=12376,
+        default=12357,
         help="Radio de normalización de la densidad [AU]; default=3600",
     )
 
     parser.add_argument(
-        "--env-pow",
+        "--envelope-power",
         type=float,
         default=1.5,
         help="Exponente p en n(r) propto r^-p; default=1.5",
@@ -905,6 +1384,84 @@ def main():
         help=(
             "Radio externo de la envolvente [AU]. Si se omite, el perfil "
             "continúa hasta el mayor radio graficado."
+        ),
+    )
+
+    # Parámetros del disco de Pringle / flared
+    parser.add_argument(
+        "--no-disk",
+        action="store_true",
+        help="No calcular ni dibujar el potencial del disco de Pringle.",
+    )
+
+    parser.add_argument(
+        "--disk-n0",
+        type=float,
+        default=1.0e7,
+        help=(
+            "Densidad numérica H2 en el plano medio [cm^-3] en disk-r0-au; "
+            "default=1e7."
+        ),
+    )
+
+    parser.add_argument(
+        "--disk-r0-au",
+        type=float,
+        default=3600.0,
+        help="Radio de normalización de n_mid [AU]; default=3600.",
+    )
+
+    parser.add_argument(
+        "--disk-power",
+        type=float,
+        default=-2.25,
+        help="Exponente q en n_mid(R) propto R^q; default=-2.25.",
+    )
+
+    parser.add_argument(
+        "--disk-rstar-rsun",
+        type=float,
+        default=10.0,
+        help="Radio estelar R_* [R_sun]; default=10.",
+    )
+
+    parser.add_argument(
+        "--disk-height-fraction",
+        type=float,
+        default=0.01,
+        help="H(R_*)/R_*; default=0.01.",
+    )
+
+    parser.add_argument(
+        "--disk-flaring-power",
+        type=float,
+        default=1.25,
+        help=(
+            "beta en H(R)=H(R_*)(R/R_*)^beta; default=1.25. "
+            "Con q=-2.25 corresponde a la pareja alpha=beta+1."
+        ),
+    )
+
+    parser.add_argument(
+        "--disk-rmax-au",
+        type=float,
+        default=3600.0,
+        help="Radio externo del disco [AU]; default=3600.",
+    )
+
+    parser.add_argument(
+        "--disk-nradial",
+        type=int,
+        default=700,
+        help="Número de radios fuente para integrar el disco; default=700.",
+    )
+
+    parser.add_argument(
+        "--disk-nz",
+        type=int,
+        default=12,
+        help=(
+            "Orden par de la cuadratura Gauss-Hermite vertical; default=12."
         ),
     )
 
@@ -958,8 +1515,18 @@ def main():
         plot_envelope=not args.no_envelope,
         envelope_n0_cm3=args.envelope_n0,
         envelope_r0_au=args.envelope_r0_au,
-        envelope_power=args.env_pow,
+        envelope_power=args.envelope_power,
         envelope_rout_au=args.envelope_rout_au,
+        plot_disk=not args.no_disk,
+        disk_n0_cm3=args.disk_n0,
+        disk_r0_au=args.disk_r0_au,
+        disk_density_power=args.disk_power,
+        disk_rstar_rsun=args.disk_rstar_rsun,
+        disk_height_fraction=args.disk_height_fraction,
+        disk_flaring_power=args.disk_flaring_power,
+        disk_rmax_au=args.disk_rmax_au,
+        disk_nradial=args.disk_nradial,
+        disk_nz=args.disk_nz,
         resolution_arcsec=args.resolution_arcsec,
         min_radius_au=args.min_radius_au,
         output=args.output,

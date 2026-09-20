@@ -943,7 +943,7 @@ def plot_ulrichdisk_diagnostics(
         )
         print(f"Error: {err}")
         
-def UlrichDisk(nmodel, *, MStar, MRate, Rdisc, Arho0, Renv, cavity_ang, exp_disc, molec_abund, BT, T10Env, p, lum_bol, molec, grid_config, model_config, radmc_config, prop_only=False, diagnostic_plots=True, diagnostic_tag="Main", diagnostic_output_dir="."):
+def UlrichDisk(nmodel, *, MStar, MRate, Rdisc, Arho0, Renv, cavity_ang, exp_disc, molec_abund, BT, T10Env, p, lum_bol, molec, grid_config, model_config, radmc_config, prop_only=False, diagnostic_plots=False, diagnostic_tag="Main", diagnostic_output_dir="."):
     t0 = time.time()
     if grid_config is None:
         raise ValueError("grid_config must be provided")
@@ -980,7 +980,7 @@ def UlrichDisk(nmodel, *, MStar, MRate, Rdisc, Arho0, Renv, cavity_ang, exp_disc
     #Parameters for the Pringle disc
     #-------------------------------
     MRate = MRate * u.MSun_yr
-    #RStar = u.RSun * ( MStar/u.MSun )**0.8  #????
+    #RStar = u.RSun * ( MStar/u.MSun )**0.8  
     
     RStar = 26 * u.RSun * ( MStar/u.MSun )**0.27 * ( MRate / (1e-3*u.MSun_yr) )**0.41
     #from hosakawa 2009 relation for adiabatic accretion phase
@@ -1020,9 +1020,9 @@ def UlrichDisk(nmodel, *, MStar, MRate, Rdisc, Arho0, Renv, cavity_ang, exp_disc
     #---------------------
     # MODEL TEMPERATURE
     #---------------------
-    temperature = Model.temperature(TStar, Rd,T10Env, RStar, MStar, MRate, BT, density, GRID, p=p)
+    temperature = Model.temperature(TStar, Rd,T10Env, RStar, MStar, MRate, BT, density, GRID, p=p, Tmin_env=22)
     #temperature=Model.temperature_Constant(density, GRID, discTemp = 2.5*const_T, envTemp = const_T, backTemp = 30.0)
-    #Whitney et al. exponent is p=0.33 (in Keto & Zhang (2/(4+p)) where p<-1  )   
+    #Whitney et al. exponent is p=0.33 (optically thin) (in Keto & Zhang (2/(4+p)) where p<-1 is for the model disc+env  )   
     #--------
     #VELOCITY
     #--------
@@ -1090,296 +1090,802 @@ def UlrichDisk(nmodel, *, MStar, MRate, Rdisc, Arho0, Renv, cavity_ang, exp_disc
 
     
 
-def Hamburguers(nmodel=0, MStar=20, MRate=5e-4, discFlag = True, Rdisc=300, Arho0=5, 
-prop_only=False, molec='ch3oh', molec_abund=7.5e-6, p=0.5):
 
-#-------
-#DISC
-#-------
-    H0sf = 0.03 #Disc scale height factor (H0 = H0sf * RStar)
-    Arho = Arho0 #Disc density factor
-   
-    t0 = time.time()
+def _require_model_configs(grid_config, model_config, radmc_config):
+    """Validate the configuration blocks shared by all model builders."""
+    if grid_config is None:
+        raise ValueError("grid_config must be provided")
+    if model_config is None:
+        raise ValueError("model_config must be provided")
+    if radmc_config is None:
+        raise ValueError("radmc_config must be provided")
 
-    print('\n')
-    print('Passed paremeters are:')
-    print('nmodel: {}'.format(nmodel))
-    print('MStar: {}'.format(MStar))
-    print('MRate: {}'.format(MRate))
-    print('Rdisc: {}'.format(Rdisc))
-    print('Arho0: {}'.format(Arho0))
-    #print('Renv: {}'.format(Renv))
-    #------------------
-    MStar = MStar * u.MSun
-    LStar = u.LSun * ( MStar/u.MSun )**4
-    
-    #-------------------------------
-    #Parameters for the Pringle disc
-    #-------------------------------
-    MRate = MRate * u.MSun_yr
-    RStar = u.RSun * ( MStar/u.MSun )**0.8
-    print('RStar:'.format(RStar))
-    TStar = u.TSun * ( (LStar/u.LSun) / (RStar/u.RSun)**2 )**0.25
-    Rd = Rdisc * u.au
 
-    print ('RStar:', RStar/u.RSun,', LStar:', LStar/u.LSun, ', TStar:', TStar)
-    
-    #---------------
-    #GRID Definition
-    #---------------
-    #Cubic grid, each edge ranges [-size, size] au.
+def _make_configured_grid(grid_config):
+    """Create the sf3dmodels grid from the project JSON."""
+    half_size_au = grid_config["half_size_au"]
+    npoints = grid_config["npoints"]
+    include_zero = grid_config.get("include_zero", True)
 
-    sizex = sizey = sizez = 1648 * u.au
-    Nx = Ny = Nz = 103 #Number of divisions for each axis
-    GRID = Model.grid([sizex, sizey, sizez], [Nx, Ny, Nz], rt_code = 'radmc3d', include_zero = True)
-    NPoints = GRID.NPoints #Final number of nodes in the grid
-  
+    grid_size = np.asarray(half_size_au, dtype=float) * u.au
+    grid_npoints = np.asarray(npoints, dtype=int)
 
-    #--------
-    #DENSITY
-    #--------
-    Rho0 = Res.Rho0(MRate, Rd, MStar)
-    print('#####%f######'%(Rho0))
-    density = Model.density_Hamburgers(RStar, H0sf, Rd, Rho0, Arho, GRID,
-                                    discFlag = True, rdisc_max = Rd*1.5, p=p)
-    
-    BT=5
-    T10Env = 400
-    temperature = Model.temperature_Hamburgers(TStar, RStar, MStar, MRate, Rd, T10Env, BT, density, GRID, 
-                           p = 0.33, Tmin_disc = 30., Tmin_env = 30., inverted = False)
-    
+    return Model.grid(
+        grid_size,
+        grid_npoints,
+        rt_code="radmc3d",
+        include_zero=include_zero,
+    )
 
-#TStar: stellar temperature
-#T10Env: Envelope temperature at 10AU
-#RStar: stellar radius
-#MStar: stellar mass
-#MRate: Mass accretion rate
-#BT: Disc temperature factor
-#p: Temperature power law exponent 
-#GRID: [xList,yList,zList]
-    
-   
-    #--------
-    #VELOCITY
-    #--------
-    vel = Model.velocity(RStar, MStar, Rd, density, GRID)
-#(IOnized gas)
-    Model.PrintProperties(density, temperature, GRID, species='dens_ion')
-    Model.PrintProperties(density, temperature, GRID, species='dens_e')
-    
-   #**********************
-    #WRITE RADMC-3D FILES
-    #**********************
-    abundance = molec_abund+np.zeros(GRID.NPoints) #Optimize for the molecule
-    gtdratio = Model.gastodust(100., GRID.NPoints)
-    microturb = 100.+np.zeros(GRID.NPoints)
-    prop = {'dens_H2': density.total,
-        'dens_dust': 2*ct.mH * density.total * 1/gtdratio, #mass density # ct.mH -> u.amu
-        'temp_dust': temperature.total, #30+np.zeros_like(density.total),
-        #'temp_gas': temperature.total, 
-        'velocity': [vel.x, vel.y, vel.z],
-        'gtdratio': gtdratio,
-        'microturbulence': microturb,
-        'abundance': abundance}
 
-    if prop_only: return GRID, prop, density
-    
+def _hamburger_stellar_properties(MStar_msun, MRate_msunyr, lum_bol, model_config):
+    """
+    Return MStar, MRate, RStar and TStar in the native sf3dmodels units.
+
+    Two RStar prescriptions are supported so old Hamburger runs can be
+    reproduced while allowing the same Hosokawa-like prescription used by
+    UlrichDisk:
+      - legacy_mass_powerlaw: RStar/Rsun = (MStar/Msun)^0.8
+      - hosokawa_accretion:   current UlrichDisk prescription
+    """
+    MStar = float(MStar_msun) * u.MSun
+    MRate = float(MRate_msunyr) * u.MSun_yr
+
+    radius_mode = model_config.get(
+        "stellar_radius_mode",
+        "legacy_mass_powerlaw",
+    ).lower()
+
+    if radius_mode == "legacy_mass_powerlaw":
+        RStar = u.RSun * (MStar / u.MSun) ** 0.8
+    elif radius_mode == "hosokawa_accretion":
+        RStar = (
+            26
+            * u.RSun
+            * (MStar / u.MSun) ** 0.27
+            * (MRate / (1e-3 * u.MSun_yr)) ** 0.41
+        )
+    else:
+        raise ValueError(
+            "Unknown stellar_radius_mode "
+            f"'{radius_mode}'. Use 'legacy_mass_powerlaw' "
+            "or 'hosokawa_accretion'."
+        )
+
+    LStar = float(lum_bol) * u.LSun
+    TStar = u.TSun * (
+        (LStar / u.LSun) / (RStar / u.RSun) ** 2
+    ) ** 0.25
+
+    return MStar, MRate, RStar, TStar
+
+
+def _write_radmc_model(
+    GRID,
+    prop,
+    density,
+    MStar,
+    molec,
+    radmc_config,
+):
+    """Write the RADMC-3D inputs shared by the three model families."""
     radmc = rt.Radmc3d(GRID)
-    wavelength_intervals = [1e-1,5e2,1e4] #[5e-3, 5e1, 1e4]
-    wavelength_divisions = [20,20] 
-    radmc.write_radmc3d_control(nphot=100000000, incl_dust=1, setthreads=8, incl_freefree=0, tgas_eq_tdust=1, modified_random_walk=1)
+
+    wavelength_intervals = radmc_config[
+        "wavelength_intervals_micron"
+    ]
+    wavelength_divisions = radmc_config[
+        "wavelength_divisions"
+    ]
+
+    radmc.write_radmc3d_control(
+        nphot=radmc_config["nphot"],
+        incl_dust=radmc_config["incl_dust"],
+        setthreads=radmc_config["threads"],
+        incl_freefree=radmc_config["incl_freefree"],
+        tgas_eq_tdust=radmc_config["tgas_eq_tdust"],
+        modified_random_walk=radmc_config[
+            "modified_random_walk"
+        ],
+    )
+
     radmc.write_amr_grid()
-    radmc.write_dust_density(prop['dens_dust']) #Mass density
-    radmc.write_dust_temperature(prop['temp_dust']) #Spherical radial plaw temperature produces artifacts near the disc outer radius in the line images
-    radmc.write_gas_velocity(prop['velocity'])
-    radmc.write_microturbulence(prop['microturbulence'])
-    radmc.write_stars(nstars=1, pos=[[0,0,0]], rstars = [u.RSun], mstars = [MStar], flux = [[-u.TSun]], #flux --> if negative, radmc assumes the input number as the blackbody temperature of the star 
-                  lam = wavelength_intervals, nxx = wavelength_divisions) 
-    radmc.write_wavelength_micron(lam = wavelength_intervals, nxx = wavelength_divisions) #lam --> wavelengths in microns, nxx --> number of divisions in between wavelengths
-    nx,ny,nz = GRID.Nodes
-    
-    write_molecule_files(nx=nx,ny=ny,nz=nz, density=density, prop=prop, molec=molec)
+    radmc.write_dust_density(prop["dens_dust"])
+    radmc.write_dust_temperature(prop["temp_dust"])
+    radmc.write_gas_temperature(prop["temp_dust"])
+    radmc.write_gas_velocity(prop["velocity"])
+    radmc.write_microturbulence(prop["microturbulence"])
 
-    
-   
-    #3D Points Distribution (weighting with density)
-#-----------------------------------------------
+    # Preserve the stellar write-out used by the current UlrichDisk routine.
+    radmc.write_stars(
+        nstars=1,
+        pos=[[0, 0, 0]],
+        rstars=[u.RSun],
+        mstars=[MStar],
+        flux=[[-u.TSun]],
+        lam=wavelength_intervals,
+        nxx=wavelength_divisions,
+    )
+    radmc.write_wavelength_micron(
+        lam=wavelength_intervals,
+        nxx=wavelength_divisions,
+    )
 
-    tag = 'Main'
-    dens_plot = density.total / 1e6
-
-    weight = 10*Rho0
-    r = GRID.rRTP[0] / u.au #GRID.rRTP hosts [r, R, Theta, Phi] --> Polar GRID
-    Plot_model.scatter3D(GRID, density.total, weight,
-                         NRand = 4000, colordim = r, axisunit = u.au,
-                         cmap = 'jet', colorscale = 'log',
-                         colorlabel = r'${\rm log}_{10}(r [au])$',
-                         output = '3Dpoints%s.png'%tag, show = False)
-
-    #-------
-    #TIMING
-    #-------
-    print ('Ellapsed time for iterarion of create_model.py: %.3fs' % (time.time() - t0))
-    print ('-------------------------------------------------\n-------------------------------------------------\n')
-
-    
-
-def Hamburguers_piecewise(nmodel=0, MStar=20, MRate=1e-4, discFlag = True, Rdisc=150, Arho0=10, prop_only=False, molec='co' ,molec_abund=5e-7):
+    nx, ny, nz = GRID.Nodes
+    write_molecule_files(
+        nx=nx,
+        ny=ny,
+        nz=nz,
+        density=density,
+        prop=prop,
+        molec=molec,
+    )
 
 
-#def density_Hamburgers_piecewise(RStar, H0, R_list, p_list, rho0, GRID, RH_list = None,
-#                               q_list = [0.5], rho_thres = 10.0, rho_min = 0.0, 
- #                                Rt = False):
+def _make_prop(
+    GRID,
+    density,
+    temperature,
+    vel,
+    molec_abund,
+    model_config,
+):
+    """Assemble the property dictionary expected by RADMC-3D."""
+    gtd_ratio = model_config["gas_to_dust_ratio"]
+    microturbulence = model_config["microturbulence_ms"]
 
-#RStar: stellar radius
-#H0: scaleheight normalization constant --> usually H0 = shFactor * R0
-#R_list: List of polar limits, length (n,)
-#p_list: List of powerlaws in R_list intervals, length (n-1,)
-#rho0: density at R_list[0]
-#Optionals:
-#RH_list: List of limits for piecewise scaleheight, length (n,)
-#q_list: List of powerlaws in RH_list intervals, length (n-1,)
-#rho_thres: minimum reachable density by the model
-#rho_min: background density
-#Rt: radius where the disc tapering starts
+    abundance = float(molec_abund) + np.zeros(GRID.NPoints)
+    gtdratio = Model.gastodust(gtd_ratio, GRID.NPoints)
+    microturb = microturbulence + np.zeros(GRID.NPoints)
+
+    return {
+        "dens_H2": density.total,
+        "dens_dust": 2 * ct.mH * density.total * 1 / gtdratio,
+        "temp_dust": temperature.total,
+        "velocity": [vel.x, vel.y, vel.z],
+        "gtdratio": gtdratio,
+        "microturbulence": microturb,
+        "abundance": abundance,
+    }
 
 
+def _resolve_piecewise_radii(section, Rdisc_au, prefix="R"):
+    """
+    Resolve a piecewise-radius list from either absolute AU values or
+    fractions of Rdisc. Returns native sf3dmodels length units.
+    """
+    abs_key = f"{prefix}_breaks_au"
+    frac_key = f"{prefix}_breaks_fraction"
 
-#-------
-#DISC
-#-------
-    H0sf = 0.03 #Disc scale height factor (H0 = H0sf * RStar)
-    Arho = 5.25 #Disc density factor
-   
+    if abs_key in section:
+        radii_au = np.asarray(section[abs_key], dtype=float)
+    elif frac_key in section:
+        radii_au = (
+            np.asarray(section[frac_key], dtype=float)
+            * float(Rdisc_au)
+        )
+    else:
+        raise ValueError(
+            f"Piecewise section needs '{abs_key}' "
+            f"or '{frac_key}'."
+        )
+
+    if radii_au.ndim != 1 or radii_au.size < 2:
+        raise ValueError("Piecewise radii must contain at least 2 limits.")
+    if np.any(np.diff(radii_au) <= 0):
+        raise ValueError("Piecewise radii must be strictly increasing.")
+    if radii_au[0] <= 0:
+        raise ValueError("The first piecewise radius must be > 0.")
+
+    return radii_au * u.au
+
+
+def _validate_piecewise_exponents(radii, exponents, label):
+    exponents = list(exponents)
+    if len(exponents) != len(radii) - 1:
+        raise ValueError(
+            f"{label}: expected {len(radii)-1} exponents "
+            f"for {len(radii)} radius limits, got {len(exponents)}."
+        )
+    return exponents
+
+
+def _piecewise_velocity(
+    density,
+    GRID,
+    MStar,
+    Rdisc_au,
+    model_config,
+    vphi_factor=1.0,
+    vr_factor=0.0,
+    vr0_kms=None,
+):
+    """
+    Build the velocity field with sf3dmodels.velocity_piecewise.
+
+    vphi_factor scales the Keplerian speed at the first rotational break.
+    vr_factor scales the free-fall speed at the first radial break;
+    positive vr_factor means inward motion.
+    """
+    cfg = model_config.get("velocity_piecewise", {})
+    rotation = cfg.get("rotation", {})
+    infall = cfg.get("infall", {})
+
+    R_list = pR_list = v0R = None
+    r_list = pr_list = v0r = None
+
+    if rotation.get("enabled", True):
+        R_list = _resolve_piecewise_radii(
+            rotation,
+            Rdisc_au,
+            prefix="R",
+        )
+        pR_list = _validate_piecewise_exponents(
+            R_list,
+            rotation.get("p_list", []),
+            "velocity_piecewise.rotation",
+        )
+
+        if "v0_kms" in rotation:
+            vphi0 = float(rotation["v0_kms"]) * 1e3
+        else:
+            vphi0 = (
+                float(vphi_factor)
+                * np.sqrt(G.value * MStar / R_list[0])
+            )
+
+        v0R = [0.0, 0.0, vphi0]
+
+    if infall.get("enabled", False):
+        r_list = _resolve_piecewise_radii(
+            infall,
+            Rdisc_au,
+            prefix="r",
+        )
+        pr_list = _validate_piecewise_exponents(
+            r_list,
+            infall.get("p_list", []),
+            "velocity_piecewise.infall",
+        )
+
+        if "v0_kms" in infall:
+            # Fixed value specified directly in the project JSON.
+            vr0 = -abs(float(infall["v0_kms"])) * 1e3
+
+        elif vr0_kms is not None:
+            # Free scalar parameter supplied by test_pars / MCMC CSV.
+            # Positive vr0_kms means inward motion.
+            vr0 = -abs(float(vr0_kms)) * 1e3
+
+        else:
+            # Backward-compatible mode:
+            # vr_factor is a fraction of the free-fall velocity.
+            vr0 = (
+                -abs(float(vr_factor))
+                * np.sqrt(2.0 * G.value * MStar / r_list[0])
+            )
+
+        v0r = [vr0, 0.0, 0.0]
+
+    if R_list is None and r_list is None:
+        raise ValueError(
+            "velocity_mode='piecewise' but both rotation and infall "
+            "are disabled."
+        )
+
+    return Model.velocity_piecewise(
+        density,
+        GRID,
+        R_list=R_list,
+        pR_list=pR_list,
+        v0R=v0R,
+        r_list=r_list,
+        pr_list=pr_list,
+        v0r=v0r,
+    )
+
+
+def _hamburger_velocity(
+    RStar,
+    MStar,
+    Rd,
+    density,
+    GRID,
+    Rdisc_au,
+    model_config,
+    vphi_factor=1.0,
+    vr_factor=0.0,
+    vr0_kms=None,
+    default_mode="standard",
+):
+    velocity_mode = model_config.get(
+        "velocity_mode",
+        default_mode,
+    ).lower()
+
+    if velocity_mode == "standard":
+        return Model.velocity(
+            RStar,
+            MStar,
+            Rd,
+            density,
+            GRID,
+        )
+
+    if velocity_mode == "piecewise":
+        return _piecewise_velocity(
+            density=density,
+            GRID=GRID,
+            MStar=MStar,
+            Rdisc_au=Rdisc_au,
+            model_config=model_config,
+            vphi_factor=vphi_factor,
+            vr_factor=vr_factor,
+            vr0_kms=vr0_kms,
+        )
+
+    raise ValueError(
+        f"Unknown velocity_mode '{velocity_mode}'. "
+        "Use 'standard' or 'piecewise'."
+    )
+
+
+def Hamburguers(
+    nmodel=0,
+    *,
+    MStar=20,
+    MRate=5e-4,
+    Rdisc=300,
+    Arho0=5,
+    H0_factor=0.03,
+    p_density=2.25,
+    q_density=0.5,
+    BT=5.0,
+    T10Env=400.0,
+    p_temp=0.33,
+    Tmin_disc=30.0,
+    Tmin_env=30.0,
+    molec_abund=7.5e-6,
+    vphi_factor=1.0,
+    vr_factor=0.0,
+    vr0_kms=None,
+    lum_bol,
+    molec,
+    grid_config,
+    model_config,
+    radmc_config,
+    prop_only=False,
+    diagnostic_plots=True,
+    diagnostic_tag="Main",
+    diagnostic_output_dir=".",
+):
+    """
+    Config-driven Hamburger disk model.
+
+    All run/environment settings come from the same JSON structure used by
+    UlrichDisk. Physical scalar parameters can therefore live in a model-
+    specific CSV and be fitted by the same MCMC driver.
+    """
     t0 = time.time()
+    _require_model_configs(
+        grid_config,
+        model_config,
+        radmc_config,
+    )
 
-    print('\n')
-    print('Passed paremeters are:')
-    print('nmodel: {}'.format(nmodel))
-    print('MStar: {}'.format(MStar))
-    print('MRate: {}'.format(MRate))
-    print('Rdisc: {}'.format(Rdisc))
-    print('Arho0: {}'.format(Arho0))
-    #print('Renv: {}'.format(Renv))
-    #------------------
-    MStar = MStar * u.MSun
-    LStar = u.LSun * ( MStar/u.MSun )**4
-    
-    #-------------------------------
-    #Parameters for the Pringle disc
-    #-------------------------------
-    MRate = MRate * u.MSun_yr
-    RStar = u.RSun * ( MStar/u.MSun )**0.8
-    print('RStar:'.format(RStar))
-    TStar = u.TSun * ( (LStar/u.LSun) / (RStar/u.RSun)**2 )**0.25
-    Rd = Rdisc * u.au
+    discFlag = model_config.get("disc", True)
+    envFlag = model_config.get("envelope", False)
 
-    print ('RStar:', RStar/u.RSun,', LStar:', LStar/u.LSun, ', TStar:', TStar)
-    
-    #---------------
-    #GRID Definition
-    #---------------
-    #Cubic grid, each edge ranges [-size, size] au.
+    if not discFlag:
+        raise ValueError("Hamburguers requires model_options.disc=true.")
+    if envFlag:
+        raise ValueError(
+            "density_Hamburgers is a disk-only density law; "
+            "set model_options.envelope=false."
+        )
 
-    sizex = sizey = sizez = 4000 * u.au
-    Nx = Ny = Nz = 80 #Number of divisions for each axis
-    GRID = Model.grid([sizex, sizey, sizez], [Nx, Ny, Nz], rt_code = 'radmc3d', include_zero = True)
-    NPoints = GRID.NPoints #Final number of nodes in the grid
-  
+    print("\n")
+    print("Passed parameters are:")
+    print(f"nmodel: {nmodel}")
+    print(f"MStar: {MStar}")
+    print(f"MRate: {MRate}")
+    print(f"Rdisc: {Rdisc}")
+    print(f"Arho0: {Arho0}")
+    print(f"H0_factor: {H0_factor}")
+    print(f"p_density: {p_density}")
+    print(f"q_density: {q_density}")
 
-    #--------
-    #DENSITY
-    #--------
-    Rho0 = Res.Rho0(MRate, Rd, MStar)
-    print('#####%f######'%(Rho0))
-    density = Model.density_Hamburgers_piecewise(RStar, RStar*H0sf, [Rd/1000,Rd/3, 2*Rd/3,Rd],[1,0.5,0.2], Rho0, GRID)
+    MStar_si, MRate_si, RStar, TStar = (
+        _hamburger_stellar_properties(
+            MStar,
+            MRate,
+            lum_bol,
+            model_config,
+        )
+    )
+    Rd = float(Rdisc) * u.au
 
-    #---------------------
-    # MODEL TEMPERATURE
-    #---------------------
-    # Ionized gas temperature
+    print(
+        "RStar:",
+        RStar / u.RSun,
+        ", TStar:",
+        TStar,
+    )
 
-    t_e = 100 #K
+    GRID = _make_configured_grid(grid_config)
+
+    Rho0 = Res.Rho0(
+        MRate_si,
+        Rd,
+        MStar_si,
+    )
+
+    rho_thres = model_config.get("rho_thres", 10.0)
+    rho_min = model_config.get("rho_min", 1.0)
+
+    rt_au = model_config.get("Rt_au")
+    Rt = False if rt_au is None else float(rt_au) * u.au
+
+    if "rdisc_max_au" in model_config:
+        rdisc_max = float(model_config["rdisc_max_au"]) * u.au
+    else:
+        rdisc_max = (
+            float(model_config.get("rdisc_max_factor", 1.0))
+            * Rd
+        )
+
+    density = Model.density_Hamburgers(
+        RStar,
+        float(H0_factor),
+        Rd,
+        Rho0,
+        float(Arho0),
+        GRID,
+        p=float(p_density),
+        q=float(q_density),
+        rho_thres=float(rho_thres),
+        rho_min=float(rho_min),
+        Rt=Rt,
+        discFlag=True,
+        rdisc_max=rdisc_max,
+    )
+
+    temperature = Model.temperature_Hamburgers(
+        TStar,
+        RStar,
+        MStar_si,
+        MRate_si,
+        Rd,
+        float(T10Env),
+        float(BT),
+        density,
+        GRID,
+        p=float(p_temp),
+        Tmin_disc=float(Tmin_disc),
+        Tmin_env=float(Tmin_env),
+        inverted=bool(model_config.get("inverted_temperature", False)),
+    )
+
+    vel = _hamburger_velocity(
+        RStar,
+        MStar_si,
+        Rd,
+        density,
+        GRID,
+        Rdisc,
+        model_config,
+        vphi_factor=vphi_factor,
+        vr_factor=vr_factor,
+        vr0_kms=vr0_kms,
+        default_mode="standard",
+    )
+
+    prop = _make_prop(
+        GRID,
+        density,
+        temperature,
+        vel,
+        molec_abund,
+        model_config,
+    )
+
+    if diagnostic_plots:
+        plot_ulrichdisk_diagnostics(
+            GRID=GRID,
+            prop=prop,
+            density=density,
+            MStar_msun=MStar_si / u.MSun,
+            Rdisc_au=float(Rdisc),
+            Renv_au=None,
+            tag=diagnostic_tag,
+            output_dir=diagnostic_output_dir,
+            show=False,
+        )
+
+    if prop_only:
+        return GRID, prop, density
+
+    _write_radmc_model(
+        GRID,
+        prop,
+        density,
+        MStar_si,
+        molec,
+        radmc_config,
+    )
+
+    print(
+        "Ellapsed time for iteration of create_model.py: "
+        f"{time.time() - t0:.3f}s"
+    )
+    print(
+        "-------------------------------------------------\n"
+        "-------------------------------------------------\n"
+    )
 
 
-    temperature = Model.temperature_Constant(density, GRID, discTemp=t_e, backTemp=2.725480)
+def Hamburguers_piecewise(
+    nmodel=0,
+    *,
+    MStar=20,
+    MRate=1e-4,
+    Rdisc=150,
+    Arho0=10,
+    H0_factor=0.03,
+    BT=5.0,
+    T10Env=400.0,
+    p_temp=0.33,
+    Tmin_disc=30.0,
+    Tmin_env=30.0,
+    molec_abund=5e-7,
+    vphi_factor=1.0,
+    vr_factor=0.0,
+    lum_bol,
+    molec,
+    grid_config,
+    model_config,
+    radmc_config,
+    prop_only=False,
+    diagnostic_plots=True,
+    diagnostic_tag="Main",
+    diagnostic_output_dir=".",
+):
+    """
+    Config-driven piecewise Hamburger disk model.
 
-    
-   
-    #--------
-    #VELOCITY
-    #--------
-    vel = Model.velocity(RStar, MStar, Rd, density, GRID)
-#(IOnized gas)
-    Model.PrintProperties(density, temperature, GRID, species='dens_ion')
-    Model.PrintProperties(density, temperature, GRID, species='dens_e')
-    
-    
-    #-------------------------
-    #ROTATION, VSYS, CENTERING
-    #-------------------------
+    The piecewise radius limits and exponents are stored in model_options
+    because they are arrays. Scalar normalizations/factors remain available
+    in the CSV and can be fitted by MCMC.
+    """
+    t0 = time.time()
+    _require_model_configs(
+        grid_config,
+        model_config,
+        radmc_config,
+    )
 
-    #xc, yc, zc = [0.0,0.0,0.0]
-    #CENTER = [xc, yc, zc] #New center of the region in the global grid
-    #newProperties = Model.ChangeGeometry(GRID, center = CENTER,  vel = vel,
-    	      	 	             #rot_dict = {'angles': [0*(np.pi/2)*(60./90)], 'axis': ['x'] })
-    #GRID.XYZ = newProperties.newXYZ #XYZ redefinition
-    #vel.x, vel.y, vel.z = newProperties.newVEL #vels redefinition
+    discFlag = model_config.get("disc", True)
+    envFlag = model_config.get("envelope", False)
 
-    #rot_dict = {'angles': [(np.pi/2)*(135./90),(np.pi/2)*(60./90)], 'axis': ['y','x'] })
+    if not discFlag:
+        raise ValueError(
+            "Hamburguers_piecewise requires model_options.disc=true."
+        )
+    if envFlag:
+        raise ValueError(
+            "density_Hamburgers_piecewise is disk-only; "
+            "set model_options.envelope=false."
+        )
+
+    print("\n")
+    print("Passed parameters are:")
+    print(f"nmodel: {nmodel}")
+    print(f"MStar: {MStar}")
+    print(f"MRate: {MRate}")
+    print(f"Rdisc: {Rdisc}")
+    print(f"Arho0: {Arho0}")
+    print(f"H0_factor: {H0_factor}")
+    print(f"vphi_factor: {vphi_factor}")
+    print(f"vr_factor: {vr_factor}")
+
+    MStar_si, MRate_si, RStar, TStar = (
+        _hamburger_stellar_properties(
+            MStar,
+            MRate,
+            lum_bol,
+            model_config,
+        )
+    )
+    Rd = float(Rdisc) * u.au
+
+    GRID = _make_configured_grid(grid_config)
+
+    Rho0 = Res.Rho0(
+        MRate_si,
+        Rd,
+        MStar_si,
+    )
+
+    density_cfg = model_config.get("density_piecewise")
+    if density_cfg is None:
+        raise ValueError(
+            "Hamburguers_piecewise needs "
+            "model_options.density_piecewise."
+        )
+
+    R_list = _resolve_piecewise_radii(
+        density_cfg,
+        Rdisc,
+        prefix="R",
+    )
+    p_list = _validate_piecewise_exponents(
+        R_list,
+        density_cfg.get("p_list", []),
+        "density_piecewise",
+    )
+
+    RH_list = None
+    if (
+        "RH_breaks_au" in density_cfg
+        or "RH_breaks_fraction" in density_cfg
+    ):
+        # _resolve_piecewise_radii expects a one-letter prefix, so handle
+        # the scale-height limits explicitly here.
+        if "RH_breaks_au" in density_cfg:
+            RH_list = (
+                np.asarray(
+                    density_cfg["RH_breaks_au"],
+                    dtype=float,
+                )
+                * u.au
+            )
+        else:
+            RH_list = (
+                np.asarray(
+                    density_cfg["RH_breaks_fraction"],
+                    dtype=float,
+                )
+                * float(Rdisc)
+                * u.au
+            )
+        if np.any(np.diff(RH_list) <= 0):
+            raise ValueError(
+                "density_piecewise RH limits must be strictly increasing."
+            )
+
+    q_list = density_cfg.get("q_list", [0.5])
+    if RH_list is not None:
+        q_list = _validate_piecewise_exponents(
+            RH_list,
+            q_list,
+            "density_piecewise scale height",
+        )
+
+    rt_au = model_config.get("Rt_au")
+    Rt = False if rt_au is None else float(rt_au) * u.au
+
+    density = Model.density_Hamburgers_piecewise(
+        RStar,
+        float(H0_factor) * RStar,
+        R_list,
+        p_list,
+        float(Arho0) * Rho0,
+        GRID,
+        RH_list=RH_list,
+        q_list=q_list,
+        rho_thres=float(model_config.get("rho_thres", 10.0)),
+        rho_min=float(model_config.get("rho_min", 1.0)),
+        Rt=Rt,
+    )
+
+    temperature = Model.temperature_Hamburgers(
+        TStar,
+        RStar,
+        MStar_si,
+        MRate_si,
+        Rd,
+        float(T10Env),
+        float(BT),
+        density,
+        GRID,
+        p=float(p_temp),
+        Tmin_disc=float(Tmin_disc),
+        Tmin_env=float(Tmin_env),
+        inverted=bool(model_config.get("inverted_temperature", False)),
+    )
+
+    vel = _hamburger_velocity(
+        RStar,
+        MStar_si,
+        Rd,
+        density,
+        GRID,
+        Rdisc,
+        model_config,
+        vphi_factor=vphi_factor,
+        vr_factor=vr_factor,
+        default_mode="piecewise",
+    )
+
+    prop = _make_prop(
+        GRID,
+        density,
+        temperature,
+        vel,
+        molec_abund,
+        model_config,
+    )
+
+    if diagnostic_plots:
+        plot_ulrichdisk_diagnostics(
+            GRID=GRID,
+            prop=prop,
+            density=density,
+            MStar_msun=MStar_si / u.MSun,
+            Rdisc_au=float(Rdisc),
+            Renv_au=None,
+            tag=diagnostic_tag,
+            output_dir=diagnostic_output_dir,
+            show=False,
+        )
+
+    if prop_only:
+        return GRID, prop, density
+
+    _write_radmc_model(
+        GRID,
+        prop,
+        density,
+        MStar_si,
+        molec,
+        radmc_config,
+    )
+
+    print(
+        "Ellapsed time for iteration of create_model.py: "
+        f"{time.time() - t0:.3f}s"
+    )
+    print(
+        "-------------------------------------------------\n"
+        "-------------------------------------------------\n"
+    )
 
 
-    #**********************
-    #WRITE RADMC-3D FILES
-    #**********************
-    abundance = molec_abund+np.zeros(GRID.NPoints) #Optimize for the molecule
-    gtdratio = Model.gastodust(100., GRID.NPoints)
-    microturb = 100.+np.zeros(GRID.NPoints)
-    prop = {'dens_H2': density.total,
-        'dens_dust': 2*ct.mH * density.total * 1/gtdratio, #mass density # ct.mH -> u.amu
-        'temp_dust': temperature.total, #30+np.zeros_like(density.total),
-        #'temp_gas': temperature.total, 
-        'velocity': [vel.x, vel.y, vel.z],
-        'gtdratio': gtdratio,
-        'microturbulence': microturb,
-        'abundance': abundance}
+_MODEL_ALIASES = {
+    "ulrich": "ulrich",
+    "ulrichdisk": "ulrich",
+    "ulrich_disk": "ulrich",
+    "hamburgers": "hamburgers",
+    "hamburger": "hamburgers",
+    "hamburguers": "hamburgers",
+    "hamburguers_disk": "hamburgers",
+    "hamburgers_piecewise": "hamburgers_piecewise",
+    "hamburger_piecewise": "hamburgers_piecewise",
+    "hamburguers_piecewise": "hamburgers_piecewise",
+}
 
-    if prop_only: return GRID, prop, density
-    
-    radmc = rt.Radmc3d(GRID)
-    wavelength_intervals = [1e-1,5e2,1e4] #[5e-3, 5e1, 1e4]
-    wavelength_divisions = [20,20] 
-    radmc.write_radmc3d_control(nphot=100000000, incl_dust=1, setthreads=8, incl_freefree=0, tgas_eq_tdust=1, modified_random_walk=1)
-    radmc.write_amr_grid()
-    radmc.write_dust_density(prop['dens_dust']) #Mass density
-    radmc.write_dust_temperature(prop['temp_dust']) #Spherical radial plaw temperature produces artifacts near the disc outer radius in the line images
-    radmc.write_gas_velocity(prop['velocity'])
-    radmc.write_microturbulence(prop['microturbulence'])
-    radmc.write_stars(nstars=1, pos=[[0,0,0]], rstars = [u.RSun], mstars = [MStar], flux = [[-u.TSun]], #flux --> if negative, radmc assumes the input number as the blackbody temperature of the star 
-                  lam = wavelength_intervals, nxx = wavelength_divisions) 
-    radmc.write_wavelength_micron(lam = wavelength_intervals, nxx = wavelength_divisions) #lam --> wavelengths in microns, nxx --> number of divisions in between wavelengths
-    nx,ny,nz = GRID.Nodes
-    
-    write_molecule_files(nx=nx,ny=ny,nz=nz, density=density, prop=prop, molec=molec)
 
-    
-   
-    #3D Points Distribution (weighting with density)
-#-----------------------------------------------
+def get_model_function(model_type):
+    """Return the configured yso_models builder for a model.type string."""
+    key = str(model_type).strip().lower()
+    canonical = _MODEL_ALIASES.get(key)
 
-    tag = 'Main'
-    dens_plot = density.total / 1e6
+    if canonical is None:
+        allowed = sorted(
+            {
+                "ulrich",
+                "hamburgers",
+                "hamburgers_piecewise",
+            }
+        )
+        raise ValueError(
+            f"Unknown model type '{model_type}'. "
+            f"Available models: {allowed}"
+        )
 
-    weight = 10*Rho0
-    r = GRID.rRTP[0] / u.au #GRID.rRTP hosts [r, R, Theta, Phi] --> Polar GRID
-    Plot_model.scatter3D(GRID, density.total, weight,
-                         NRand = 4000, colordim = r, axisunit = u.au,
-                         cmap = 'jet', colorscale = 'log',
-                         colorlabel = r'${\rm log}_{10}(r [au])$',
-                         output = '3Dpoints%s.png'%tag, show = False)
-
-    #-------
-    #TIMING
-    #-------
-    print ('Ellapsed time for iterarion of create_model.py: %.3fs' % (time.time() - t0))
-    print ('-------------------------------------------------\n-------------------------------------------------\n')
+    registry = {
+        "ulrich": UlrichDisk,
+        "hamburgers": Hamburguers,
+        "hamburgers_piecewise": Hamburguers_piecewise,
+    }
+    return registry[canonical]

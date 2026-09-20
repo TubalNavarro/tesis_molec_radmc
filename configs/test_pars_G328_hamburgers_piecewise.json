@@ -1,0 +1,16 @@
+{
+    "MStar": 20.0,
+    "MRate": 0.002,
+    "Rdisc": 5000.0,
+    "Arho0": 5e3,
+    "H0_factor": 0.03,
+    "BT": 4,
+    "T10Env": 800,
+    "p_temp": 0.3,
+    "Tmin_disc": 20.0,
+    "Tmin_env": 20.0,
+    "vphi_factor": 1.0,
+    "vr_factor": 0.1,
+    "molec_abund": 3e-06,
+    "incl": 56.0
+}

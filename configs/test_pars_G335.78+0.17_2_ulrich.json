@@ -1,0 +1,14 @@
+{
+    "Rdisc": 214.0,
+    "Arho0": 16.5,
+    "Renv": 8000,
+    "cavity_ang": 60,
+    "incl": 57,
+    "exp_disc": 2.25,
+    "BT": 0.53,
+    "T10Env": 1020,
+    "molec_abund": 1e-05,
+    "p": 0.66,
+    "MStar": 10,
+    "MRate": 2e-3
+}

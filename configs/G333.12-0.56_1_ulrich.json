@@ -1,0 +1,95 @@
+{
+    "source": {
+        "name": "G333.12-0.56",
+        "distance_pc": 3300.0,
+        "ra": "16h21m35.99710s",
+        "dec": "-50d40m50.0140s",
+        "v_sys_kms": -58.47,
+        "lum_bol": 1.4e3
+    },
+    "line": {
+        "molecule": "ch3oh",
+        "transition": 2,
+        "restfreq_hz": 233772270248.0,
+        "linefreq_hz": 233795666000.0
+    },
+    "observation": {
+        "pv_file": "pv_G333.12-0.56_1.fits",
+        "noise_file": "G333.12-0.56_1_noise.dat"
+    },
+    "physical_grid": {
+        "half_size_au": [
+            1336.500000000107,
+            1336.500000000107,
+            1336.500000000107
+        ],
+        "npoints": [
+            81,
+            81,
+            81
+        ],
+        "include_zero": true
+    },
+    "model_options": {
+        "disc": true,
+        "envelope": true,
+        "gas_to_dust_ratio": 100.0,
+        "microturbulence_ms": 100.0,
+        "rho_min_env": 10000000000.0
+    },
+    "radmc3d": {
+        "nphot": 100000000,
+        "threads": 1,
+        "incl_dust": 1,
+        "incl_freefree": 0,
+        "tgas_eq_tdust": 0,
+        "modified_random_walk": 0,
+        "wavelength_intervals_micron": [
+            0.1,
+            500.0,
+            10000.0
+        ],
+        "wavelength_divisions": [
+            20,
+            20
+        ]
+    },
+    "synthetic_image": {
+        "npix": 81,
+        "nchan": 58,
+        "dv_kms": 0.6261193318143057,
+        "pixel_scale_arcsec": 0.010
+    },
+    "beam": {
+        "major_arcsec": 399.07126128673553,
+        "minor_arcsec": 243.73052269220352,
+        "pa_deg": -31.54792022705078
+    },
+    "pv": {
+        "pa_deg": 135.0,
+        "length_arcsec": 0.770010,
+        "width_arcsec": 0.03,
+        "spacing_arcsec": 0.010
+    },
+    "mcmc": {
+        "nthreads": 16,
+        "omp_threads": 2,
+        "nwalkers": 32,
+        "nburn": 1,
+        "noise": 0.003,
+        "nsteps": 1600,
+        "frac_stddev": 0.01,
+        "parameter_file": "free_params_ulrich_G333_1.csv"
+    },
+    "output": {
+        "tag": "mcmc_G333.12-0.56_1",
+        "test_tag": "6pars_18sep"
+    },
+    "model": {
+        "type": "ulrich"
+    },
+    "single_model": {
+        "parameter_file": "test_pars_G333.12-0.56_1_ulrich.json",
+        "modelname": "model_ulrich_G333.12-0.56_1_test"
+    }
+}
